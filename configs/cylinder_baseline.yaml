@@ -1,0 +1,7 @@
+data_mat: ../../DATA/FLUIDS/CYLINDER_ALL.mat
+rank: 20
+seq_len: 12
+epochs: 200
+hidden_dim: 64
+rnn_type: gru
+seed: 42
