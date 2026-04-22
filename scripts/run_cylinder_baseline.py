@@ -7,7 +7,7 @@ import hydra
 import numpy as np
 import torch
 from hydra.utils import to_absolute_path
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
@@ -23,6 +23,33 @@ from get_shredded.data import (
     split_time_series,
 )
 from get_shredded.train import TrainConfig, mse_on_windows, train_model
+
+
+def save_checkpoint(
+    model: torch.nn.Module,
+    basis,
+    cfg: DictConfig,
+    train_history: dict[str, list[float]],
+    test_mse: float,
+    rollout_rmse: float,
+) -> Path:
+    checkpoint_dir = Path(to_absolute_path(cfg.checkpoint.dir))
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = checkpoint_dir / str(cfg.checkpoint.name)
+
+    payload = {
+        "model_state_dict": model.state_dict(),
+        "basis_mean": basis.mean,
+        "basis_modes": basis.modes,
+        "config": OmegaConf.to_container(cfg, resolve=True),
+        "train_history": train_history,
+        "metrics": {
+            "test_one_step_mse_latent": test_mse,
+            "rollout_rmse_full_field": rollout_rmse,
+        },
+    }
+    torch.save(payload, checkpoint_path)
+    return checkpoint_path
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="cylinder_baseline")
@@ -75,6 +102,17 @@ def main(cfg: DictConfig) -> None:
     print(f"Final val loss:   {history['val_loss'][-1]:.6e}")
     print(f"Test one-step MSE (latent): {test_mse:.6e}")
     print(f"Rollout RMSE (full field, {horizon} steps): {rollout_rmse:.6e}")
+
+    if cfg.checkpoint.enabled:
+        checkpoint_path = save_checkpoint(
+            model=model,
+            basis=basis,
+            cfg=cfg,
+            train_history=history,
+            test_mse=test_mse,
+            rollout_rmse=rollout_rmse,
+        )
+        print(f"Saved model checkpoint: {checkpoint_path}")
 
 
 if __name__ == "__main__":

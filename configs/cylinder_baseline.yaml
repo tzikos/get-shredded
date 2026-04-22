@@ -1,6 +1,7 @@
 defaults:
+  - default
   - _self_
-
+  
 data:
   mat: data/CYLINDER_ALL.mat
   train_ratio: 0.7
@@ -19,5 +20,10 @@ train:
 
 rollout:
   horizon: 30
+
+checkpoint:
+  enabled: true
+  dir: models
+  name: shred_baseline.pt
 
 seed: 42
