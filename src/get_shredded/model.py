@@ -8,8 +8,8 @@ class ShallowRecurrentDecoder(nn.Module):
     def __init__(
         self,
         latent_dim: int,
-        hidden_dim: int = 64,
-        rnn_type: str = "gru",
+        hidden_dim: int,
+        rnn_type: str,
     ) -> None:
         super().__init__()
         rnn_type = rnn_type.lower()

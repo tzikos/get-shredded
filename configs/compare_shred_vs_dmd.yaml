@@ -1,0 +1,9 @@
+defaults:
+  - cylinder_baseline
+  - _self_
+
+train:
+  epochs: 20
+
+comparison:
+  dmd_ridge: 1.0e-6

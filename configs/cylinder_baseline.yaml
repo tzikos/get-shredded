@@ -1,7 +1,23 @@
-data_mat: ../../DATA/FLUIDS/CYLINDER_ALL.mat
-rank: 20
-seq_len: 12
-epochs: 200
-hidden_dim: 64
-rnn_type: gru
+defaults:
+  - _self_
+
+data:
+  mat: data/CYLINDER_ALL.mat
+  train_ratio: 0.7
+  val_ratio: 0.15
+
+model:
+  rank: 20
+  seq_len: 12
+  hidden_dim: 64
+  rnn_type: gru
+
+train:
+  epochs: 200
+  batch_size: 32
+  lr: 1.0e-3
+
+rollout:
+  horizon: 30
+
 seed: 42

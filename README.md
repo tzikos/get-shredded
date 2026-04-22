@@ -8,15 +8,19 @@ Minimal starter repository for experimenting with **SHRED (Shallow Recurrent Dec
 - Sequence windowing for autoregressive forecasting
 - A shallow recurrent decoder (`GRU` or `LSTM`, one layer)
 - A baseline training script for `CYLINDER_ALL.mat`
+- Hydra-based experiment configs for the baseline and comparison runs
 
 ## Project layout
 
 ```
 get-shredded/
+  data/
   configs/
     cylinder_baseline.yaml
+    compare_shred_vs_dmd.yaml
   scripts/
     run_cylinder_baseline.py
+    compare_shred_vs_dmd.py
   src/get_shredded/
     data.py
     model.py
@@ -26,10 +30,11 @@ get-shredded/
 ## Quick start
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-python scripts/run_cylinder_baseline.py --data-mat ../../DATA/FLUIDS/CYLINDER_ALL.mat
+uv sync
+uv run python scripts/run_cylinder_baseline.py
+uv run python scripts/compare_shred_vs_dmd.py
 ```
 
-When this repo is used as a submodule under `Project/get-shredded` in your exercises repo, the default `--data-mat` path above is valid.
+The checked-in dataset is expected at `data/CYLINDER_ALL.mat`.
+
+Hydra overrides work as usual, for example `python scripts/run_cylinder_baseline.py model.rank=40 train.epochs=500`.

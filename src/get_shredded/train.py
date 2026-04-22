@@ -11,12 +11,12 @@ from .model import ShallowRecurrentDecoder
 
 @dataclass
 class TrainConfig:
-    epochs: int = 200
-    batch_size: int = 32
-    lr: float = 1e-3
-    hidden_dim: int = 64
-    rnn_type: str = "gru"
-    device: str = "cpu"
+    epochs: int
+    batch_size: int
+    lr: float
+    hidden_dim: int
+    rnn_type: str
+    device: str
 
 
 def _to_loader(x: np.ndarray, y: np.ndarray, batch_size: int, shuffle: bool) -> DataLoader:
