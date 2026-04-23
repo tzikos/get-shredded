@@ -1,29 +1,35 @@
 defaults:
   - default
   - _self_
-  
+
 data:
   mat: data/CYLINDER_ALL.mat
-  train_ratio: 0.7
-  val_ratio: 0.15
+  test_size: 10           # last `test_size` windows held out (sequential split)
+  val_size: 20            # last `val_size` windows of the remainder used for validation
 
 model:
-  rank: 20
-  seq_len: 12
-  hidden_dim: 64
-  rnn_type: gru
+  num_sensors: 3
+  lags: 10                # cylinder data is short (~150 snapshots)
+  placement: QR           # "QR" or "random"
+  hidden_size: 64
+  hidden_layers: 2
+  l1: 350
+  l2: 400
+  dropout: 0.0
 
 train:
-  epochs: 200
-  batch_size: 32
+  epochs: 1000
+  batch_size: 64
   lr: 1.0e-3
-
-rollout:
-  horizon: 30
+  patience: 5
 
 checkpoint:
   enabled: true
   dir: models
   name: shred_baseline.pt
+
+outputs:
+  root: outputs/cylinder
+  gif_fps: 4
 
 seed: 42
