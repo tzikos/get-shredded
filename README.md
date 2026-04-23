@@ -77,9 +77,9 @@ Key knobs in [configs/cylinder_baseline.yaml](configs/cylinder_baseline.yaml):
 | `data.val_size` | 20 | Validation windows preceding the test set |
 | `train.epochs` / `patience` | 1000 / 5 | Max epochs + patience (× 20 epochs of no improvement) |
 
-## Sweep: error vs number of sensors
+## Sweep: error vs number of sensors × placement
 
-Reproduces the paper's Fig 2B / 3B / 4B style plot — relative L2 error vs sensor count, comparing all three methods.
+Reproduces the paper's Fig 2B / 3B / 4B style plot — relative L2 error vs sensor count, with **both QR-pivoted and random placement**, for SHRED, SDN, and the QR/POD baseline.
 
 ```bash
 uv run python scripts/sweep_num_sensors.py
@@ -87,20 +87,20 @@ uv run python scripts/sweep_num_sensors.py
 
 Writes to `outputs/cylinder/sweep/`:
 
-- **`error_vs_num_sensors.png`** — median test error vs `num_sensors`, one line per method.
-- **`sweep_results.npz`** — raw `(sensor_count, seed)` error arrays for SHRED/SDN/QR-POD if you want to re-plot.
+- **`error_vs_num_sensors.png`** — median test error vs `num_sensors`. Up to 5 lines: SHRED (QR), SHRED (random), SDN (QR), SDN (random), and QR/POD (linear baseline; only QR placement is plotted since the linear inverse becomes ill-conditioned with random sensors).
+- **`sweep_results.npz`** — raw error arrays of shape `(sensor_count, seed)` for every `(method, placement)` combination, keyed as e.g. `shred_QR`, `sdn_random`, etc.
 
-Defaults sweep `num_sensors ∈ {1, 2, 3, 5, 8, 12, 20}` over seeds `{0, 1, 2}`. Tune in [configs/sweep_num_sensors.yaml](configs/sweep_num_sensors.yaml):
+Defaults sweep `num_sensors ∈ {1, 2, 3, 5, 8, 12, 20}` × placements `{QR, random}` × seeds `{0, 1, 2}`. Tune in [configs/sweep_num_sensors.yaml](configs/sweep_num_sensors.yaml):
 
 ```bash
 # faster (single seed, fewer sensor counts)
 uv run python scripts/sweep_num_sensors.py sweep.seeds=[0] sweep.sensor_counts=[1,3,10,20]
 
-# random placement
-uv run python scripts/sweep_num_sensors.py model.placement=random
+# QR placement only (skip the random comparison)
+uv run python scripts/sweep_num_sensors.py sweep.placements=[QR]
 ```
 
-The sweep is the long-running job — total runtime scales as `len(sensor_counts) × len(seeds) × 2 networks × min(epochs, patience-stopped)`. Three nested tqdm bars show progress: `sensor sweep` → `n_sensors=N` → `train SHRED/SDN`. The training bar shows running `loss`, `val` (relative L2 every 20 epochs), `best`, and `patience` counter.
+The sweep is the long-running job — runtime scales as `len(sensor_counts) × len(placements) × len(seeds) × 2 networks × min(epochs, patience-stopped)`. Three nested tqdm bars show progress: `sensor sweep` → `n_sensors=N <placement>` → `train SHRED/SDN`. The training bar shows running `loss`, `val` (relative L2 every 20 epochs), `best`, and `patience` counter.
 
 ## Implementation notes
 

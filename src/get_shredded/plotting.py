@@ -146,20 +146,26 @@ def plot_training_curves(result: RunResult, save_path: Path, val_every: int = 20
 
 def plot_sweep_error_vs_sensors(
     sensor_counts: list[int],
-    shred_errs: list[float],
-    sdn_errs: list[float],
-    qrpod_errs: list[float],
+    series: dict[str, list[float]],
     save_path: Path,
-    placement: str,
 ) -> None:
-    fig, ax = plt.subplots(figsize=(6, 3.8))
-    ax.plot(sensor_counts, shred_errs, marker="o", label="SHRED")
-    ax.plot(sensor_counts, sdn_errs, marker="s", label="SDN")
-    ax.plot(sensor_counts, qrpod_errs, marker="^", label="QR/POD")
+    """series: label -> list of errors (one per sensor count). Each label is plotted
+    as one line. Convention: include " (QR)" / " (random)" in labels."""
+    style = {
+        "SHRED (random)":  dict(marker="o", linestyle="--", color="#1f77b4"),
+        "SHRED (QR)":      dict(marker="o", linestyle="-",  color="#1f77b4"),
+        "SDN (random)":    dict(marker="s", linestyle="--", color="#2ca02c"),
+        "SDN (QR)":        dict(marker="s", linestyle="-",  color="#2ca02c"),
+        "QR/POD":          dict(marker="^", linestyle="-",  color="#d62728"),
+    }
+    fig, ax = plt.subplots(figsize=(7, 4.2))
+    for label, errs in series.items():
+        kwargs = style.get(label, {"marker": "x"})
+        ax.plot(sensor_counts, errs, label=label, **kwargs)
     ax.set_xlabel("Number of sensors")
     ax.set_ylabel("Test relative L2 error")
     ax.set_yscale("log")
-    ax.set_title(f"Reconstruction error vs sensor count ({placement} placement)")
+    ax.set_title("Reconstruction error vs sensor count (median over seeds)")
     ax.grid(alpha=0.3, which="both")
     ax.legend()
     fig.tight_layout()

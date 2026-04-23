@@ -9,7 +9,6 @@ data:
 
 model:
   lags: 10
-  placement: QR           # "QR" or "random"
   hidden_size: 64
   hidden_layers: 2
   l1: 350
@@ -24,7 +23,8 @@ train:
 
 sweep:
   sensor_counts: [1, 2, 3, 5, 8, 12, 20]
-  seeds: [0, 1, 2]        # median over these seeds at each sensor count
+  placements: [QR, random]
+  seeds: [0, 1, 2]        # median over these seeds at each (sensor count, placement)
 
 outputs:
   root: outputs/cylinder
