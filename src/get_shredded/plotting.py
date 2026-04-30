@@ -5,6 +5,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import TwoSlopeNorm
 from matplotlib.animation import FuncAnimation, PillowWriter
 
 from .experiment import RunResult
@@ -22,6 +23,11 @@ def _infer_grid(m: int, nx: int, ny: int) -> tuple[int, int]:
 
 def _to_field(vec: np.ndarray, nx: int, ny: int) -> np.ndarray:
     return vec.reshape(nx, ny, order="F") if vec.size == nx * ny else vec.reshape(nx, ny)
+
+
+def _plot_limits(truth: np.ndarray, percentile: float = 99.5) -> float:
+    limit = float(np.percentile(np.abs(truth), percentile))
+    return max(limit, 1e-6)
 
 
 def plot_reconstruction_panel(
@@ -42,15 +48,15 @@ def plot_reconstruction_panel(
     ]
     n_rows = len(snapshot_indices)
     n_cols = len(cols)
-    vmax = float(np.max(np.abs(result.truth)))
-    vmin = -vmax
+    vmax = _plot_limits(result.truth)
+    norm = TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax)
 
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(3.2 * n_cols, 2.4 * n_rows), squeeze=False)
     for r, snap_idx in enumerate(snapshot_indices):
         for c, (title, data) in enumerate(cols):
             ax = axes[r, c]
             field = _to_field(data[snap_idx], nx, ny)
-            ax.imshow(field, cmap="RdBu_r", vmin=vmin, vmax=vmax, aspect="auto")
+            ax.imshow(field, cmap="seismic", norm=norm, aspect="auto", interpolation="nearest")
             if c == 0:
                 ax.scatter(sensor_cols, sensor_rows, c="lime", edgecolors="black",
                            s=60, marker="o", linewidths=1.0)
@@ -81,13 +87,19 @@ def animate_reconstructions(result: RunResult, save_path: Path, fps: int = 4) ->
         ("SDN", result.sdn_recon, False),
         ("QR/POD", result.qrpod_recon, False),
     ]
-    vmax = float(np.max(np.abs(result.truth)))
-    vmin = -vmax
+    vmax = _plot_limits(result.truth)
+    norm = TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax)
 
     fig, axes = plt.subplots(1, len(panels), figsize=(3.2 * len(panels), 3.0))
     images = []
     for ax, (title, data, show_sensors) in zip(axes, panels):
-        im = ax.imshow(_to_field(data[0], nx, ny), cmap="RdBu_r", vmin=vmin, vmax=vmax, aspect="auto")
+        im = ax.imshow(
+            _to_field(data[0], nx, ny),
+            cmap="seismic",
+            norm=norm,
+            aspect="auto",
+            interpolation="nearest",
+        )
         ax.set_title(title, fontsize=10)
         ax.set_xticks([]); ax.set_yticks([])
         if show_sensors:

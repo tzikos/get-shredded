@@ -46,6 +46,10 @@ class RunResult:
     num_sensors: int
     lags: int
 
+    # Trained model weights for checkpoint export / later visualization.
+    shred_state_dict: dict[str, torch.Tensor]
+    sdn_state_dict: dict[str, torch.Tensor]
+
 
 def _per_snapshot_rel_error(pred: np.ndarray, truth: np.ndarray) -> np.ndarray:
     num = np.linalg.norm(pred - truth, axis=1)
@@ -105,7 +109,12 @@ def run_experiment(
 
     all_data_in = build_sensor_windows(transformed_X, sensor_locations, lags)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
 
     def to_tensor(arr: np.ndarray) -> torch.Tensor:
         return torch.tensor(arr, dtype=torch.float32, device=device)
@@ -167,4 +176,6 @@ def run_experiment(
         placement=placement,
         num_sensors=num_sensors,
         lags=lags,
+        shred_state_dict={k: v.detach().cpu() for k, v in shred.state_dict().items()},
+        sdn_state_dict={k: v.detach().cpu() for k, v in sdn.state_dict().items()},
     )

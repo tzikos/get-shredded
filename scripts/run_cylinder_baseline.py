@@ -67,9 +67,14 @@ def main(cfg: DictConfig) -> None:
         ckpt_dir = Path(to_absolute_path(cfg.checkpoint.dir))
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         ckpt = ckpt_dir / str(cfg.checkpoint.name)
+
         torch.save(
             {
                 "sensor_locations": result.sensor_locations,
+                "shred_state_dict": result.shred_state_dict,
+                "sdn_state_dict": result.sdn_state_dict,
+                "shred_val_history": result.shred_val_history,
+                "sdn_val_history": result.sdn_val_history,
                 "config": OmegaConf.to_container(cfg, resolve=True),
                 "metrics": {
                     "shred_err": result.shred_err,
