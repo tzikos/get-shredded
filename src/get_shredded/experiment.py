@@ -11,9 +11,9 @@ import numpy as np
 import torch
 from sklearn.preprocessing import MinMaxScaler
 
-from .baseline import QRPODBaseline
-from .data import build_sensor_windows, load_cylinder_data, qr_place
+from .data import build_sensor_windows, load_cylinder_data, qr_place, qrpod_reconstruct
 from .model import SDN, SHRED, TimeSeriesDataset, fit
+from .noise import apply_sensor_noise, resolve_sensor_modes
 
 
 @dataclass
@@ -80,6 +80,13 @@ def run_experiment(
     lr: float,
     patience: int,
     seed: int,
+    noise_enabled: bool = False,
+    noise_modes: list[str] | None = None,
+    noise_white_std: float = 0.0,
+    noise_none_fill_value: float = 0.0,
+    noise_auto_extend: bool = True,
+    noise_default_mode: str = "true",
+    noise_seed: int | None = None,
     verbose: bool = True,
 ) -> RunResult:
     np.random.seed(seed)
@@ -108,6 +115,22 @@ def run_experiment(
     transformed_X = sc.transform(load_X).astype(np.float32)
 
     all_data_in = build_sensor_windows(transformed_X, sensor_locations, lags)
+
+    sensor_modes = resolve_sensor_modes(
+        num_sensors,
+        noise_modes if noise_enabled else ["true"] * num_sensors,
+        auto_extend=noise_auto_extend,
+        default_mode=noise_default_mode,
+    )
+    if noise_enabled:
+        rng = np.random.default_rng(seed if noise_seed is None else noise_seed)
+        all_data_in = apply_sensor_noise(
+            all_data_in,
+            sensor_modes,
+            white_std=float(noise_white_std),
+            none_fill_value=float(noise_none_fill_value),
+            rng=rng,
+        )
 
     if torch.cuda.is_available():
         device = "cuda"
@@ -151,11 +174,17 @@ def run_experiment(
     truth = sc.inverse_transform(test_ds.Y.detach().cpu().numpy())
 
     truth_indices = test_indices + lags - 1
-    qrpod = QRPODBaseline(num_sensors=num_sensors)
-    qrpod.U_r = U_r
-    qrpod.sensor_locations = sensor_locations
-    qrpod.m = m
-    qrpod_recon = qrpod.predict(load_X[truth_indices])
+    sensor_measurements = load_X[truth_indices][:, sensor_locations]
+    if noise_enabled:
+        rng_qr = np.random.default_rng((seed if noise_seed is None else noise_seed) + 1)
+        sensor_measurements = apply_sensor_noise(
+            sensor_measurements,
+            sensor_modes,
+            white_std=float(noise_white_std),
+            none_fill_value=float(noise_none_fill_value),
+            rng=rng_qr,
+        )
+    qrpod_recon = qrpod_reconstruct(sensor_measurements, np.asarray(sensor_locations), U_r, m)
 
     return RunResult(
         shred_recon=shred_recon,

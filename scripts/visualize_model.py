@@ -20,10 +20,10 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from get_shredded.baseline import QRPODBaseline
-from get_shredded.data import build_sensor_windows, load_cylinder_data, qr_place
+from get_shredded.data import build_sensor_windows, load_cylinder_data, qr_place, qrpod_reconstruct
 from get_shredded.experiment import RunResult
 from get_shredded.model import SDN, SHRED, TimeSeriesDataset
+from get_shredded.noise import apply_sensor_noise, resolve_sensor_modes
 from get_shredded.plotting import (
     animate_reconstructions,
     plot_per_snapshot_error,
@@ -101,6 +101,22 @@ def _build_result_from_checkpoint(
     l2 = int(cfg.model.l2)
     dropout = float(cfg.model.dropout)
     seed = int(cfg.seed)
+    noise_cfg = cfg.noise if "noise" in cfg else OmegaConf.create({
+        "enabled": False,
+        "modes": [],
+        "white_std": 0.03,
+        "none_fill_value": 0.0,
+        "auto_extend": True,
+        "default_mode": "true",
+        "seed": None,
+    })
+    noise_enabled = bool(noise_cfg.enabled)
+    noise_modes = [str(mode) for mode in noise_cfg.modes]
+    noise_white_std = float(noise_cfg.white_std)
+    noise_none_fill_value = float(noise_cfg.none_fill_value)
+    noise_auto_extend = bool(noise_cfg.auto_extend)
+    noise_default_mode = str(noise_cfg.default_mode)
+    noise_seed = int(noise_cfg.seed) if noise_cfg.seed is not None else None
 
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -120,6 +136,22 @@ def _build_result_from_checkpoint(
     sc = MinMaxScaler().fit(load_X[train_indices])
     transformed_X = sc.transform(load_X).astype(np.float32)
     all_data_in = build_sensor_windows(transformed_X, sensor_locations, lags)
+
+    sensor_modes = resolve_sensor_modes(
+        num_sensors,
+        noise_modes if noise_enabled else ["true"] * num_sensors,
+        auto_extend=noise_auto_extend,
+        default_mode=noise_default_mode,
+    )
+    if noise_enabled:
+        rng_noise = np.random.default_rng(seed if noise_seed is None else noise_seed)
+        all_data_in = apply_sensor_noise(
+            all_data_in,
+            sensor_modes,
+            white_std=noise_white_std,
+            none_fill_value=noise_none_fill_value,
+            rng=rng_noise,
+        )
 
     if torch.cuda.is_available():
         device = "cuda"
@@ -168,11 +200,17 @@ def _build_result_from_checkpoint(
     truth = sc.inverse_transform(test_ds.Y.detach().cpu().numpy())
 
     truth_indices = test_indices + lags - 1
-    qrpod = QRPODBaseline(num_sensors=num_sensors)
-    qrpod.U_r = U_r
-    qrpod.sensor_locations = sensor_locations
-    qrpod.m = m
-    qrpod_recon = qrpod.predict(load_X[truth_indices])
+    sensor_measurements = load_X[truth_indices][:, sensor_locations]
+    if noise_enabled:
+        rng_qr = np.random.default_rng((seed if noise_seed is None else noise_seed) + 1)
+        sensor_measurements = apply_sensor_noise(
+            sensor_measurements,
+            sensor_modes,
+            white_std=noise_white_std,
+            none_fill_value=noise_none_fill_value,
+            rng=rng_qr,
+        )
+    qrpod_recon = qrpod_reconstruct(sensor_measurements, np.asarray(sensor_locations), U_r, m)
 
     shred_err, shred_err_per_snap = _rel_errors(shred_recon, truth)
     sdn_err, sdn_err_per_snap = _rel_errors(sdn_recon, truth)

@@ -1,0 +1,9 @@
+enabled: true
+# Example for three sensors: sensor_1=true, sensor_2=white, sensor_3=none
+modes: ["true", "white", "none"]
+auto_extend: true
+default_mode: "true"
+white_std: 0.03
+none_fill_value: 0.0
+# If null, falls back to the main run seed.
+seed: null

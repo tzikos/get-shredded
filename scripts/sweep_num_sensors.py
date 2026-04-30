@@ -57,6 +57,13 @@ def main(cfg: DictConfig) -> None:
                     lr=float(cfg.train.lr),
                     patience=int(cfg.train.patience),
                     seed=int(seed),
+                    noise_enabled=bool(cfg.noise.enabled),
+                    noise_modes=[str(mode) for mode in cfg.noise.modes],
+                    noise_white_std=float(cfg.noise.white_std),
+                    noise_none_fill_value=float(cfg.noise.none_fill_value),
+                    noise_auto_extend=bool(cfg.noise.auto_extend),
+                    noise_default_mode=str(cfg.noise.default_mode),
+                    noise_seed=(int(cfg.noise.seed) + int(seed)) if cfg.noise.seed is not None else None,
                     verbose=True,
                 )
                 per_count[("shred", placement)].append(r.shred_err)

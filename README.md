@@ -77,6 +77,41 @@ Key knobs in [configs/cylinder_baseline.yaml](configs/cylinder_baseline.yaml):
 | `data.val_size` | 20 | Validation windows preceding the test set |
 | `train.epochs` / `patience` | 1000 / 5 | Max epochs + patience (× 20 epochs of no improvement) |
 
+## Sensor noise model (per sensor)
+
+You can inject sensor corruption with a dedicated Hydra config group under `configs/noise/`.
+
+- `noise=disabled` (default): all sensors return true measurements.
+- `noise=per_sensor`: per-sensor modes are applied from `noise.modes`.
+
+Supported per-sensor modes:
+
+- `"true"` — return true sensor value.
+- `"white"` — add Gaussian white noise (`noise.white_std`).
+- `"none"` — sensor is dead and returns a constant (`noise.none_fill_value`).
+
+Example (three sensors: true / white / dead):
+
+```bash
+uv run python scripts/run_cylinder_baseline.py noise=per_sensor
+```
+
+Or override inline:
+
+```bash
+uv run python scripts/run_cylinder_baseline.py \
+  noise.enabled=true \
+  noise.modes='["true","white","none"]' \
+  noise.white_std=0.02 \
+  noise.none_fill_value=0.0
+```
+
+Notes:
+
+- Noise is applied to SHRED/SDN sensor inputs and to QR/POD sensor measurements.
+- `noise.auto_extend=true` lets short mode lists be padded with `noise.default_mode`.
+- `noise.seed` controls noise reproducibility (falls back to main `seed` when null).
+
 ## Sweep: error vs number of sensors × placement
 
 Reproduces the paper's Fig 2B / 3B / 4B style plot — relative L2 error vs sensor count, with **both QR-pivoted and random placement**, for SHRED, SDN, and the QR/POD baseline.

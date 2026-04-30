@@ -1,5 +1,6 @@
 defaults:
   - default
+  - noise: disabled
   - _self_
 
 data:
