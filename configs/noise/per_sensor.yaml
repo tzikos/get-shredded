@@ -1,5 +1,6 @@
 enabled: true
 # Example for three sensors: sensor_1=true, sensor_2=white, sensor_3=none
+# The none mode currently uses the same Gaussian-noise path as white.
 modes: ["true", "white", "none"]
 auto_extend: true
 default_mode: "true"

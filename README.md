@@ -88,7 +88,7 @@ Supported per-sensor modes:
 
 - `"true"` — return true sensor value.
 - `"white"` — add Gaussian white noise (`noise.white_std`).
-- `"none"` — sensor is dead and returns a constant (`noise.none_fill_value`).
+- `"none"` — sensor still returns a noisy reading; currently this uses the same Gaussian noise path as `"white"`.
 
 Example (three sensors: true / white / dead):
 
