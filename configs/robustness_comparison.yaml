@@ -1,0 +1,34 @@
+defaults:
+  - default
+  - _self_
+
+data:
+  mat: data/CYLINDER_ALL.mat
+  test_size: 10
+  val_size: 20
+
+model:
+  num_sensors: 3
+  lags: 10
+  placement: QR
+  hidden_size: 64
+  hidden_layers: 2
+  l1: 350
+  l2: 400
+  dropout: 0.0
+
+train:
+  epochs: 1000
+  batch_size: 64
+  lr: 1.0e-3
+  patience: 5
+
+augmentation:
+  gaussian_std: 0.03      # std for Gaussian noise augmentation during training
+  test_noise_std: 0.03    # std of Gaussian noise applied to test sensors (noisy eval)
+  dropout_fill: 0.0       # fill value for sensor dropout
+
+outputs:
+  root: outputs/cylinder/robustness
+
+seed: 42

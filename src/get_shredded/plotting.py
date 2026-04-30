@@ -8,7 +8,7 @@ import numpy as np
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.animation import FuncAnimation, PillowWriter
 
-from .experiment import RunResult
+from .experiment import RunResult, RobustnessResult
 
 
 def _infer_grid(m: int, nx: int, ny: int) -> tuple[int, int]:
@@ -183,4 +183,126 @@ def plot_sweep_error_vs_sensors(
     fig.tight_layout()
     save_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path, dpi=140)
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Robustness comparison plots
+# ---------------------------------------------------------------------------
+
+def plot_robustness_bar(result: RobustnessResult, save_path: Path) -> None:
+    """Grouped bar chart: each model variant gets a clean bar and a noisy bar."""
+    names = [m.name for m in result.models]
+    errs_clean = [m.err_clean for m in result.models]
+    errs_noisy = [m.err_noisy for m in result.models]
+
+    x = np.arange(len(names))
+    width = 0.38
+
+    fig, ax = plt.subplots(figsize=(max(10, len(names) * 0.9), 4.5))
+    ax.bar(x - width / 2, errs_clean, width, label="Clean test",
+           color="#4878cf", alpha=0.85)
+    ax.bar(x + width / 2, errs_noisy, width, label="Noisy test",
+           color="#d65f5f", alpha=0.85, hatch="//")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(names, rotation=30, ha="right", fontsize=9)
+    ax.set_ylabel("Relative L2 error")
+    ax.set_title(
+        f"Robustness comparison — {result.num_sensors} sensors ({result.placement}), lags={result.lags}"
+    )
+    ax.grid(axis="y", alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(save_path, dpi=140)
+    plt.close(fig)
+
+
+def plot_robustness_per_snapshot(
+    result: RobustnessResult,
+    test_type: str,
+    save_path: Path,
+) -> None:
+    """Per-snapshot error lines for all model variants under clean or noisy test."""
+    if test_type not in {"clean", "noisy"}:
+        raise ValueError(f"test_type must be 'clean' or 'noisy', got '{test_type}'")
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    markers = ["o", "s", "^", "D", "v", "P", "X", "*", "h", "+"]
+    for i, m in enumerate(result.models):
+        errs = m.err_per_snap_clean if test_type == "clean" else m.err_per_snap_noisy
+        x = np.arange(1, len(errs) + 1)
+        ax.plot(x, errs, marker=markers[i % len(markers)], label=m.name, linewidth=1.2)
+
+    ax.set_xlabel("Test snapshot index")
+    ax.set_ylabel("Relative L2 error")
+    ax.set_title(
+        f"Per-snapshot error ({test_type} test) — "
+        f"{result.num_sensors} sensors ({result.placement})"
+    )
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=8, ncol=2)
+    fig.tight_layout()
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(save_path, dpi=140)
+    plt.close(fig)
+
+
+def plot_robustness_panel(
+    result: RobustnessResult,
+    test_type: str,
+    snapshot_indices: list[int],
+    save_path: Path,
+) -> None:
+    """Reconstruction grid: rows = snapshots, columns = model variants."""
+    if test_type not in {"clean", "noisy"}:
+        raise ValueError(f"test_type must be 'clean' or 'noisy', got '{test_type}'")
+
+    truth = result.truth_clean if test_type == "clean" else result.truth_noisy
+    nx, ny = _infer_grid(truth.shape[1], result.nx, result.ny)
+    sensor_rows, sensor_cols = np.unravel_index(result.sensor_locations, (nx, ny), order="F")
+
+    vmax = _plot_limits(truth)
+    norm = TwoSlopeNorm(vmin=-vmax, vcenter=0.0, vmax=vmax)
+
+    col_data = [(f"Ground truth\n(sensors)", truth, True)] + [
+        (
+            f"{m.name}\nerr={m.err_clean:.3f}" if test_type == "clean"
+            else f"{m.name}\nerr={m.err_noisy:.3f}",
+            m.recon_clean if test_type == "clean" else m.recon_noisy,
+            False,
+        )
+        for m in result.models
+    ]
+
+    n_rows = len(snapshot_indices)
+    n_cols = len(col_data)
+    fig, axes = plt.subplots(n_rows, n_cols,
+                             figsize=(2.8 * n_cols, 2.4 * n_rows), squeeze=False)
+
+    for r, snap_idx in enumerate(snapshot_indices):
+        for c, (title, data, show_sensors) in enumerate(col_data):
+            ax = axes[r, c]
+            ax.imshow(
+                _to_field(data[snap_idx], nx, ny),
+                cmap="seismic", norm=norm, aspect="auto", interpolation="nearest",
+            )
+            if show_sensors:
+                ax.scatter(sensor_cols, sensor_rows, c="lime", edgecolors="black",
+                           s=40, marker="o", linewidths=0.8)
+            if r == 0:
+                ax.set_title(title, fontsize=8)
+            if c == 0:
+                ax.set_ylabel(f"t={snap_idx}", fontsize=8)
+            ax.set_xticks([]); ax.set_yticks([])
+
+    fig.suptitle(
+        f"Robustness panel ({test_type} test) — "
+        f"{result.num_sensors} sensors ({result.placement}), lags={result.lags}",
+        fontsize=10,
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(save_path, dpi=120)
     plt.close(fig)

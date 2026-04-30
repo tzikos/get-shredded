@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from typing import Callable
 
 import torch
 from torch import nn
@@ -99,9 +100,13 @@ def fit(
     lr: float = 1e-3,
     verbose: bool = False,
     patience: int = 5,
+    augment_fn: Callable[[torch.Tensor], torch.Tensor] | None = None,
 ) -> torch.Tensor:
     """Training loop matching the paper: Adam + MSE, validation on relative
-    L2 error every 20 epochs, early stopping on patience, restores best params."""
+    L2 error every 20 epochs, early stopping on patience, restores best params.
+
+    augment_fn is applied to each training batch only (not validation/test).
+    """
     train_loader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size)
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -123,6 +128,8 @@ def fit(
         epoch_loss = 0.0
         n_batches = 0
         for batch_x, batch_y in train_loader:
+            if augment_fn is not None:
+                batch_x = augment_fn(batch_x)
             optimizer.zero_grad()
             loss = criterion(model(batch_x), batch_y)
             loss.backward()

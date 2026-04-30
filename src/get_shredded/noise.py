@@ -75,9 +75,12 @@ def apply_sensor_noise(
     for sensor_idx, mode in enumerate(sensor_modes):
         if mode == "true":
             continue
-        if mode in {"white", "none"}:
+        if mode == "white":
             noise = rng.normal(0.0, white_std, size=out[..., sensor_idx].shape)
             out[..., sensor_idx] = out[..., sensor_idx] + noise.astype(out.dtype, copy=False)
+            continue
+        if mode == "none":
+            out[..., sensor_idx] = none_fill_value
             continue
         raise ValueError(f"Unsupported noise mode '{mode}'")
 
