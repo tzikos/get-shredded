@@ -52,15 +52,18 @@ class RunResult:
     sdn_state_dict: dict[str, torch.Tensor]
 
 
+SCENARIOS = ["gaussian", "dropout", "hybrid", "burst"]
+
+
 @dataclass
 class ModelResult:
     name: str
-    recon_clean: np.ndarray       # (T_test, m)
+    recon_clean: np.ndarray                     # (T_test, m)
     err_clean: float
     err_per_snap_clean: np.ndarray
-    recon_noisy: np.ndarray       # (T_test, m)
-    err_noisy: float
-    err_per_snap_noisy: np.ndarray
+    recon_noisy: dict[str, np.ndarray]          # scenario -> (T_test, m)
+    err_noisy: dict[str, float]
+    err_per_snap_noisy: dict[str, np.ndarray]
     val_history: np.ndarray
     state_dict: dict[str, torch.Tensor] | None = field(default=None)
 
@@ -68,8 +71,7 @@ class ModelResult:
 @dataclass
 class RobustnessResult:
     models: list[ModelResult]     # 4×SHRED + 4×SDN + QR-POD
-    truth_clean: np.ndarray       # (T_test, m)
-    truth_noisy: np.ndarray       # (T_test, m) — truth is same field, noisy refers to sensor inputs
+    truth: np.ndarray             # (T_test, m) ground truth (field, not sensor readings)
     sensor_locations: np.ndarray
     nx: int
     ny: int
@@ -87,6 +89,66 @@ def _per_snapshot_rel_error(pred: np.ndarray, truth: np.ndarray) -> np.ndarray:
 
 def _aggregate_rel_error(pred: np.ndarray, truth: np.ndarray) -> float:
     return float(np.linalg.norm(pred - truth) / np.linalg.norm(truth))
+
+
+def _build_scenario_noisy(
+    data: np.ndarray,
+    scenario: str,
+    num_sensors: int,
+    *,
+    gaussian_std: float,
+    dropout_fill: float,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Apply scenario-specific noise to a sensor array of shape (T, ..., num_sensors).
+
+    Gaussian — per-sample: K ~ Uniform[0, N] sensors get Gaussian noise; rest untouched.
+    Dropout  — per-sample: K ~ Uniform[0, N//2] sensors zeroed; at most half fail at once.
+    Hybrid   — per-sample: K ~ Uniform[0, N] sensors each get noise, zero, or nothing (1/3 each).
+    Burst    — per-sample: K ~ Uniform[0, N] sensors get signal-proportional noise;
+               per element noise_std ~ Uniform(0, |x|).
+    """
+    _max_drop = max(1, num_sensors // 2)
+    out = data.copy()
+    for t in range(out.shape[0]):
+        if scenario == "gaussian":
+            k = int(rng.integers(0, num_sensors + 1))
+            if k == 0:
+                continue
+            chosen = rng.choice(num_sensors, size=k, replace=False)
+            for s in chosen:
+                noise = rng.normal(0.0, gaussian_std, out[t, ..., s].shape).astype(out.dtype)
+                out[t, ..., s] = out[t, ..., s] + noise
+        elif scenario == "dropout":
+            k = int(rng.integers(0, _max_drop + 1))
+            if k == 0:
+                continue
+            chosen = rng.choice(num_sensors, size=k, replace=False)
+            for s in chosen:
+                out[t, ..., s] = dropout_fill
+        elif scenario == "burst":
+            k = int(rng.integers(0, num_sensors + 1))
+            if k == 0:
+                continue
+            chosen = rng.choice(num_sensors, size=k, replace=False)
+            for s in chosen:
+                noise_std = rng.uniform(0.0, np.abs(out[t, ..., s]))
+                noise = rng.normal(0.0, 1.0, out[t, ..., s].shape).astype(out.dtype) * noise_std
+                out[t, ..., s] = out[t, ..., s] + noise
+        else:  # hybrid
+            k = int(rng.integers(0, num_sensors + 1))
+            if k == 0:
+                continue
+            chosen = rng.choice(num_sensors, size=k, replace=False)
+            for s in chosen:
+                r = rng.random()
+                if r < 1 / 3:
+                    noise = rng.normal(0.0, gaussian_std, out[t, ..., s].shape).astype(out.dtype)
+                    out[t, ..., s] = out[t, ..., s] + noise
+                elif r < 2 / 3:
+                    out[t, ..., s] = dropout_fill
+                # else: nothing
+    return out
 
 
 def run_experiment(
@@ -237,13 +299,8 @@ def run_experiment(
     )
 
 
-_AUG_TYPES = ["none", "gaussian", "dropout", "hybrid"]
-_AUG_LABELS = {
-    "none": "clean",
-    "gaussian": "gaussian",
-    "dropout": "dropout",
-    "hybrid": "hybrid",
-}
+_AUG_TYPES = ["none", "gaussian", "dropout", "hybrid", "burst"]
+_AUG_LABELS = {"none": "clean", "gaussian": "gaussian", "dropout": "dropout", "hybrid": "hybrid", "burst": "burst"}
 
 
 def run_robustness_comparison(
@@ -307,20 +364,18 @@ def run_robustness_comparison(
 
     train_in = to_tensor(all_data_in[train_indices])
     valid_in = to_tensor(all_data_in[valid_indices])
+    test_windows_clean = all_data_in[test_indices]          # (T_test, lags, num_sensors) numpy
+    test_in_clean = to_tensor(test_windows_clean)
 
-    # Clean test inputs (no noise)
-    test_in_clean = to_tensor(all_data_in[test_indices])
-
-    # Noisy test inputs — Gaussian noise on all sensor channels
-    rng_test = np.random.default_rng(seed + 42)
-    test_in_np_noisy = apply_sensor_noise(
-        all_data_in[test_indices],
-        ["white"] * num_sensors,
-        white_std=test_noise_std,
-        none_fill_value=0.0,
-        rng=rng_test,
-    )
-    test_in_noisy = to_tensor(test_in_np_noisy)
+    # Build one deterministic noisy test set per scenario (fixed seeds, reproducible)
+    test_tensors_noisy: dict[str, torch.Tensor] = {}
+    for i, scenario in enumerate(SCENARIOS):
+        rng_s = np.random.default_rng(seed + 100 + i)
+        noisy_np = _build_scenario_noisy(
+            test_windows_clean, scenario, num_sensors,
+            gaussian_std=test_noise_std, dropout_fill=dropout_fill, rng=rng_s,
+        )
+        test_tensors_noisy[scenario] = to_tensor(noisy_np)
 
     train_out = to_tensor(transformed_X[train_indices + lags - 1])
     valid_out = to_tensor(transformed_X[valid_indices + lags - 1])
@@ -330,7 +385,6 @@ def run_robustness_comparison(
 
     train_ds = TimeSeriesDataset(train_in, train_out)
     valid_ds = TimeSeriesDataset(valid_in, valid_out)
-
     train_ds_sdn = TimeSeriesDataset(train_in[:, -1, :], train_out)
     valid_ds_sdn = TimeSeriesDataset(valid_in[:, -1, :], valid_out)
 
@@ -339,39 +393,37 @@ def run_robustness_comparison(
     for aug_type in _AUG_TYPES:
         label = _AUG_LABELS[aug_type]
         augment_fn = make_batch_augmenter(
-            aug_type, num_sensors,
-            gaussian_std=gaussian_std,
-            dropout_fill=dropout_fill,
-        )
+            aug_type, num_sensors, gaussian_std=gaussian_std, dropout_fill=dropout_fill,
+        ) if aug_type != "none" else None
 
         # SHRED variant
         shred = SHRED(num_sensors, m, hidden_size=hidden_size, hidden_layers=hidden_layers,
                       l1=l1, l2=l2, dropout=dropout).to(device)
         shred_hist = fit(shred, train_ds, valid_ds, batch_size=batch_size,
                          num_epochs=epochs, lr=lr, verbose=verbose, patience=patience,
-                         augment_fn=augment_fn if aug_type != "none" else None)
+                         augment_fn=augment_fn)
         shred.eval()
         with torch.no_grad():
             shred_rc = sc.inverse_transform(shred(test_in_clean).detach().cpu().numpy())
-            shred_rn = sc.inverse_transform(shred(test_in_noisy).detach().cpu().numpy())
+            shred_rn = {
+                s: sc.inverse_transform(shred(test_tensors_noisy[s]).detach().cpu().numpy())
+                for s in SCENARIOS
+            }
         model_results.append(ModelResult(
             name=f"SHRED-{label}",
             recon_clean=shred_rc,
             err_clean=_aggregate_rel_error(shred_rc, truth),
             err_per_snap_clean=_per_snapshot_rel_error(shred_rc, truth),
             recon_noisy=shred_rn,
-            err_noisy=_aggregate_rel_error(shred_rn, truth),
-            err_per_snap_noisy=_per_snapshot_rel_error(shred_rn, truth),
+            err_noisy={s: _aggregate_rel_error(shred_rn[s], truth) for s in SCENARIOS},
+            err_per_snap_noisy={s: _per_snapshot_rel_error(shred_rn[s], truth) for s in SCENARIOS},
             val_history=shred_hist.numpy() if hasattr(shred_hist, "numpy") else np.asarray(shred_hist),
             state_dict={k: v.detach().cpu() for k, v in shred.state_dict().items()},
         ))
 
-        # SDN variant — uses only last timestep; augment the 2-D snapshot view
-        # We build a thin wrapper so the augmenter (designed for ...×sensors) works on (batch, sensors)
+        # SDN variant — uses only last timestep
         sdn_augment_fn = make_batch_augmenter(
-            aug_type, num_sensors,
-            gaussian_std=gaussian_std,
-            dropout_fill=dropout_fill,
+            aug_type, num_sensors, gaussian_std=gaussian_std, dropout_fill=dropout_fill,
         ) if aug_type != "none" else None
 
         sdn = SDN(num_sensors, m, l1=l1, l2=l2, dropout=dropout).to(device)
@@ -379,50 +431,62 @@ def run_robustness_comparison(
                        num_epochs=epochs, lr=lr, verbose=verbose, patience=patience,
                        augment_fn=sdn_augment_fn)
         sdn.eval()
-        test_in_clean_sdn = test_in_clean[:, -1, :]
-        test_in_noisy_sdn = test_in_noisy[:, -1, :]
+        test_clean_sdn = test_in_clean[:, -1, :]
+        test_noisy_sdn = {s: test_tensors_noisy[s][:, -1, :] for s in SCENARIOS}
         with torch.no_grad():
-            sdn_rc = sc.inverse_transform(sdn(test_in_clean_sdn).detach().cpu().numpy())
-            sdn_rn = sc.inverse_transform(sdn(test_in_noisy_sdn).detach().cpu().numpy())
+            sdn_rc = sc.inverse_transform(sdn(test_clean_sdn).detach().cpu().numpy())
+            sdn_rn = {
+                s: sc.inverse_transform(sdn(test_noisy_sdn[s]).detach().cpu().numpy())
+                for s in SCENARIOS
+            }
         model_results.append(ModelResult(
             name=f"SDN-{label}",
             recon_clean=sdn_rc,
             err_clean=_aggregate_rel_error(sdn_rc, truth),
             err_per_snap_clean=_per_snapshot_rel_error(sdn_rc, truth),
             recon_noisy=sdn_rn,
-            err_noisy=_aggregate_rel_error(sdn_rn, truth),
-            err_per_snap_noisy=_per_snapshot_rel_error(sdn_rn, truth),
+            err_noisy={s: _aggregate_rel_error(sdn_rn[s], truth) for s in SCENARIOS},
+            err_per_snap_noisy={s: _per_snapshot_rel_error(sdn_rn[s], truth) for s in SCENARIOS},
             val_history=sdn_hist.numpy() if hasattr(sdn_hist, "numpy") else np.asarray(sdn_hist),
             state_dict={k: v.detach().cpu() for k, v in sdn.state_dict().items()},
         ))
 
-    # QR-POD baseline — evaluated under both clean and noisy sensor measurements
+    # QR-POD — evaluated under clean and all scenario noisy sensor measurements.
+    # Clip reconstruction to training data range: the linear operator can amplify
+    # corrupted sensor values arbitrarily, so we bound outputs to physically valid values.
     truth_indices = test_indices + lags - 1
     sensor_clean = load_X[truth_indices][:, sensor_locations]
-    sensor_noisy = apply_sensor_noise(
-        sensor_clean,
-        ["white"] * num_sensors,
-        white_std=test_noise_std,
-        none_fill_value=0.0,
-        rng=np.random.default_rng(seed + 43),
-    )
-    qrpod_rc = qrpod_reconstruct(sensor_clean, np.asarray(sensor_locations), U_r, m)
-    qrpod_rn = qrpod_reconstruct(sensor_noisy, np.asarray(sensor_locations), U_r, m)
+    _data_lo = sc.data_min_   # (m,) min per spatial location seen during training
+    _data_hi = sc.data_max_   # (m,) max per spatial location seen during training
+
+    def _qrpod_clipped(sensors: np.ndarray) -> np.ndarray:
+        recon = qrpod_reconstruct(sensors, np.asarray(sensor_locations), U_r, m)
+        return np.clip(recon, _data_lo, _data_hi)
+
+    qrpod_rc = _qrpod_clipped(sensor_clean)
+    qrpod_rn: dict[str, np.ndarray] = {}
+    for i, scenario in enumerate(SCENARIOS):
+        rng_qr = np.random.default_rng(seed + 200 + i)
+        sensor_noisy = _build_scenario_noisy(
+            sensor_clean, scenario, num_sensors,
+            gaussian_std=test_noise_std, dropout_fill=dropout_fill, rng=rng_qr,
+        )
+        qrpod_rn[scenario] = _qrpod_clipped(sensor_noisy)
+
     model_results.append(ModelResult(
         name="QR-POD",
         recon_clean=qrpod_rc,
         err_clean=_aggregate_rel_error(qrpod_rc, truth),
         err_per_snap_clean=_per_snapshot_rel_error(qrpod_rc, truth),
         recon_noisy=qrpod_rn,
-        err_noisy=_aggregate_rel_error(qrpod_rn, truth),
-        err_per_snap_noisy=_per_snapshot_rel_error(qrpod_rn, truth),
+        err_noisy={s: _aggregate_rel_error(qrpod_rn[s], truth) for s in SCENARIOS},
+        err_per_snap_noisy={s: _per_snapshot_rel_error(qrpod_rn[s], truth) for s in SCENARIOS},
         val_history=np.array([]),
     ))
 
     return RobustnessResult(
         models=model_results,
-        truth_clean=truth,
-        truth_noisy=truth,  # ground truth is the same; only sensor inputs differ
+        truth=truth,
         sensor_locations=np.asarray(sensor_locations),
         nx=nx,
         ny=ny,

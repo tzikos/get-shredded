@@ -1,9 +1,22 @@
-"""Train SHRED + SDN with four augmentation strategies and compare robustness.
+"""Robustness sweep: train SHRED + SDN with four augmentation strategies
+across multiple sensor counts and placements.
 
-Models: SHRED-clean, SHRED-gaussian, SHRED-dropout, SHRED-hybrid,
-        SDN-clean,   SDN-gaussian,   SDN-dropout,   SDN-hybrid,  QR-POD.
+Per-run outputs (one subdirectory per sensor_count × placement):
+  sensors_{N}_{placement}/
+    robustness_bar.png
+    table.md / table.tex
+    [panel_{scenario}.png, per_snapshot_{scenario}.png,    (if per_run_plots=true)
+     robustness_comparison.gif]
 
-Each model is evaluated on both clean and noisy test sensor inputs.
+Sweep-level outputs:
+  sweep.png              error vs num_sensors grid (scenarios × placements)
+  sweep_results.npz      raw error arrays
+
+Override examples:
+  uv run python scripts/run_robustness_comparison.py sweep.sensor_counts=[3,5,8,12]
+  uv run python scripts/run_robustness_comparison.py sweep.placements=[QR]
+  uv run python scripts/run_robustness_comparison.py sweep.per_run_plots=true
+  uv run python scripts/run_robustness_comparison.py train.epochs=200 train.patience=3
 """
 from __future__ import annotations
 
@@ -20,21 +33,42 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from get_shredded.experiment import run_robustness_comparison
+from get_shredded.experiment import SCENARIOS, RobustnessResult, run_robustness_comparison
 from get_shredded.plotting import (
-    plot_robustness_bar,
+    animate_robustness_comparison,
+    plot_robustness_bar_sweep,
     plot_robustness_panel,
     plot_robustness_per_snapshot,
+    plot_robustness_sweep,
+    save_robustness_table_sweep,
 )
 
 
-@hydra.main(version_base=None, config_path="../configs", config_name="robustness_comparison")
-def main(cfg: DictConfig) -> None:
+def _print_table(result: RobustnessResult, num_sensors: int, placement: str) -> None:
+    col_w = 12
+    print(f"\n── {num_sensors} sensors · {placement} placement ──")
+    header = f"{'Model':<20}" + f"{'Clean':>{col_w}}" + \
+             "".join(f"{s.capitalize():>{col_w}}" for s in SCENARIOS)
+    print(header)
+    print("-" * len(header))
+    for m in result.models:
+        row = f"{m.name:<20}{m.err_clean:>{col_w}.5f}"
+        row += "".join(f"{m.err_noisy[s]:>{col_w}.5f}" for s in SCENARIOS)
+        print(row)
+
+
+def _run_one(
+    cfg: DictConfig,
+    num_sensors: int,
+    placement: str,
+    out_dir: Path,
+) -> RobustnessResult:
+    """Train all model variants for one (num_sensors, placement) combination."""
     result = run_robustness_comparison(
         mat_path=Path(to_absolute_path(cfg.data.mat)),
-        num_sensors=int(cfg.model.num_sensors),
+        num_sensors=num_sensors,
         lags=int(cfg.model.lags),
-        placement=str(cfg.model.placement),
+        placement=placement,
         test_size=int(cfg.data.test_size),
         val_size=int(cfg.data.val_size),
         hidden_size=int(cfg.model.hidden_size),
@@ -53,32 +87,102 @@ def main(cfg: DictConfig) -> None:
         verbose=True,
     )
 
-    print(f"\n{'Model':<20} {'Clean err':>12} {'Noisy err':>12}")
-    print("-" * 46)
-    for m in result.models:
-        print(f"{m.name:<20} {m.err_clean:>12.6f} {m.err_noisy:>12.6f}")
+    _print_table(result, num_sensors, placement)
 
-    out_dir = Path(to_absolute_path(cfg.outputs.root))
+    if cfg.sweep.per_run_plots:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        n_test = result.truth.shape[0]
+        snap_indices = sorted({0, n_test // 2, n_test - 1})
+        for scenario in ["clean"] + SCENARIOS:
+            plot_robustness_panel(result, scenario, snap_indices,
+                                  out_dir / f"panel_{scenario}.png")
+            plot_robustness_per_snapshot(result, scenario,
+                                         out_dir / f"per_snapshot_{scenario}.png")
+        animate_robustness_comparison(result, out_dir / "robustness_comparison.gif", fps=4)
+
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    n_test = result.truth_clean.shape[0]
-    snap_indices = sorted({0, n_test // 2, n_test - 1})
-
-    plot_robustness_bar(result, out_dir / "robustness_bar.png")
-    plot_robustness_per_snapshot(result, "clean", out_dir / "per_snapshot_clean.png")
-    plot_robustness_per_snapshot(result, "noisy", out_dir / "per_snapshot_noisy.png")
-    plot_robustness_panel(result, "clean", snap_indices, out_dir / "panel_clean.png")
-    plot_robustness_panel(result, "noisy", snap_indices, out_dir / "panel_noisy.png")
-
-    # Save raw errors for further analysis
     np.savez(
         out_dir / "results.npz",
         model_names=np.array([m.name for m in result.models]),
         errs_clean=np.array([m.err_clean for m in result.models]),
-        errs_noisy=np.array([m.err_noisy for m in result.models]),
+        **{f"errs_{s}": np.array([m.err_noisy[s] for m in result.models])
+           for s in SCENARIOS},
+    )
+    print(f"  → saved to {out_dir}/")
+    return result
+
+
+@hydra.main(version_base=None, config_path="../configs", config_name="robustness_comparison")
+def main(cfg: DictConfig) -> None:
+    sensor_counts: list[int] = [int(n) for n in cfg.sweep.sensor_counts]
+    placements: list[str]    = [str(p) for p in cfg.sweep.placements]
+    base_dir = Path(to_absolute_path(cfg.outputs.root))
+
+    total = len(sensor_counts) * len(placements)
+    print(f"\nRobustness sweep: {sensor_counts} sensors × {placements} placements "
+          f"= {total} runs, each training {len(SCENARIOS) * 2 + 1} models.\n")
+
+    all_results: dict[tuple[int, str], RobustnessResult] = {}
+
+    for run_idx, num_sensors in enumerate(sensor_counts):
+        for placement in placements:
+            tag = f"sensors_{num_sensors}_{placement}"
+            print(f"\n[{run_idx * len(placements) + placements.index(placement) + 1}/{total}] "
+                  f"{tag}")
+            out_dir = base_dir / tag
+            result = _run_one(cfg, num_sensors, placement, out_dir)
+            all_results[(num_sensors, placement)] = result
+
+    # --- Consolidated bar charts (one per placement) + table ---
+    print("\nGenerating consolidated bar charts and table…")
+    plot_robustness_bar_sweep(all_results, sensor_counts, placements, base_dir)
+    save_robustness_table_sweep(all_results, sensor_counts, placements,
+                                base_dir / "table")
+
+    # --- Sweep summary line plot ---
+    print("\nGenerating sweep plot…")
+    plot_robustness_sweep(all_results, sensor_counts, placements,
+                          base_dir / "sweep.png")
+
+    # --- Sweep-level NPZ ---
+    model_names = [m.name for m in next(iter(all_results.values())).models]
+    conditions  = ["clean"] + SCENARIOS
+    errs = np.full(
+        (len(sensor_counts), len(placements), len(model_names), len(conditions)),
+        np.nan,
+    )
+    for si, n in enumerate(sensor_counts):
+        for pi, p in enumerate(placements):
+            res = all_results.get((n, p))
+            if res is None:
+                continue
+            by_name = {m.name: m for m in res.models}
+            for mi, mname in enumerate(model_names):
+                m = by_name.get(mname)
+                if m is None:
+                    continue
+                errs[si, pi, mi, 0] = m.err_clean
+                for ci, s in enumerate(SCENARIOS, start=1):
+                    errs[si, pi, mi, ci] = m.err_noisy[s]
+
+    np.savez(
+        base_dir / "sweep_results.npz",
+        sensor_counts=np.array(sensor_counts),
+        placements=np.array(placements),
+        model_names=np.array(model_names),
+        conditions=np.array(conditions),
+        errs=errs,  # (n_sensors, n_placements, n_models, n_conditions)
     )
 
-    print(f"\nSaved plots and results to {out_dir}/")
+    print(f"\nAll outputs saved to {base_dir}/")
+    print("  " + "  ".join(f"robustness_bar_{p}.png" for p in placements) + "  — bar charts per placement")
+    print(f"  table.md / table.tex   — consolidated error tables")
+    print(f"  sweep.png              — error vs sensors line grid")
+    print(f"  sweep_results.npz      — shape {errs.shape} (sensors, placements, models, conditions)")
+    if cfg.sweep.per_run_plots:
+        for n in sensor_counts:
+            for p in placements:
+                print(f"  sensors_{n}_{p}/       — panels + GIF + per-snapshot plots")
 
 
 if __name__ == "__main__":

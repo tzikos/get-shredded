@@ -8,9 +8,7 @@ data:
   val_size: 20
 
 model:
-  num_sensors: 3
   lags: 10
-  placement: QR
   hidden_size: 64
   hidden_layers: 2
   l1: 350
@@ -27,6 +25,11 @@ augmentation:
   gaussian_std: 0.03      # std for Gaussian noise augmentation during training
   test_noise_std: 0.03    # std of Gaussian noise applied to test sensors (noisy eval)
   dropout_fill: 0.0       # fill value for sensor dropout
+
+sweep:
+  sensor_counts: [3, 5, 8]          # list of num_sensors to run
+  placements: [QR, random]          # sensor placement strategies
+  per_run_plots: false              # set true to save panels/GIF/per-snapshot for every run
 
 outputs:
   root: outputs/cylinder/robustness
