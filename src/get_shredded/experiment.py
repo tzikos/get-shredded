@@ -451,6 +451,64 @@ def run_robustness_comparison(
             state_dict={k: v.detach().cpu() for k, v in sdn.state_dict().items()},
         ))
 
+    # --- RobustSHRED ---
+    from .model import SHRED as VanillaSHRED
+    from .robust_model import RobustSHRED
+    from .robust_train import fit_robust
+
+    vanilla_for_robust = VanillaSHRED(
+        num_sensors, m,
+        hidden_size=hidden_size, hidden_layers=hidden_layers,
+        l1=l1, l2=l2, dropout=0.0,
+    ).to(device)
+
+    robust_shred = RobustSHRED(
+        num_sensors, m,
+        hidden_size=hidden_size, hidden_layers=hidden_layers,
+        l1=l1, l2=l2, dropout=0.0, d_z=8,
+    ).to(device)
+
+    robust_augment = make_batch_augmenter(
+        "dropout", num_sensors,
+        gaussian_std=gaussian_std, dropout_fill=dropout_fill,
+    )
+
+    def _corrupt_labels(x_clean: torch.Tensor, x_aug: torch.Tensor) -> torch.Tensor:
+        diff = (x_clean - x_aug).abs().mean(dim=1)
+        return (diff < 1e-6).float()
+
+    fit_robust(
+        robust_shred, vanilla_for_robust,
+        train_ds, valid_ds,
+        batch_size=batch_size,
+        phase1_epochs=epochs, phase1_patience=patience, phase1_lr=lr,
+        phase2_epochs=max(epochs // 2, 100), phase2_patience=patience, phase2_lr=lr,
+        phase3_epochs=max(epochs // 5, 50), phase3_patience=patience, phase3_lr=lr * 0.1,
+        augment_fn=robust_augment,
+        corrupt_labels_fn=_corrupt_labels,
+        verbose=verbose,
+    )
+
+    robust_shred.eval()
+    with torch.no_grad():
+        robust_rc = sc.inverse_transform(robust_shred(test_in_clean).detach().cpu().numpy())
+        robust_rn = {
+            s: sc.inverse_transform(robust_shred(test_tensors_noisy[s]).detach().cpu().numpy())
+            for s in SCENARIOS
+        }
+
+    model_results.append(ModelResult(
+        name="SHRED-robust",
+        recon_clean=robust_rc,
+        err_clean=_aggregate_rel_error(robust_rc, truth),
+        err_per_snap_clean=_per_snapshot_rel_error(robust_rc, truth),
+        recon_noisy=robust_rn,
+        err_noisy={s: _aggregate_rel_error(robust_rn[s], truth) for s in SCENARIOS},
+        err_per_snap_noisy={s: _per_snapshot_rel_error(robust_rn[s], truth) for s in SCENARIOS},
+        val_history=np.array([]),
+        state_dict={k: v.detach().cpu() for k, v in robust_shred.state_dict().items()},
+    ))
+
     # QR-POD — evaluated under clean and all scenario noisy sensor measurements.
     # Clip reconstruction to training data range: the linear operator can amplify
     # corrupted sensor values arbitrarily, so we bound outputs to physically valid values.

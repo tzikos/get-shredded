@@ -1,0 +1,49 @@
+defaults:
+  - default
+  - _self_
+
+data:
+  mat: data/CYLINDER_ALL.mat
+  test_size: 10
+  val_size: 20
+
+model:
+  num_sensors: 3
+  lags: 10
+  placement: QR
+  hidden_size: 64
+  hidden_layers: 2
+  l1: 350
+  l2: 400
+  dropout: 0.0
+  d_z: 8
+
+phase1:
+  epochs: 1000
+  lr: 1.0e-3
+  patience: 5
+
+phase2:
+  epochs: 500
+  lr: 1.0e-3
+  patience: 5
+  beta_kl: 0.0
+  lambda_detect: 0.1
+
+phase3:
+  epochs: 200
+  lr: 1.0e-3
+  patience: 10
+
+augmentation:
+  type: burst        # dropout | gaussian | hybrid | burst
+  gaussian_std: 0.03
+  dropout_fill: 0.0
+
+train:
+  batch_size: 64
+
+outputs:
+  root: outputs/cylinder/robust_shred
+
+seed: 42

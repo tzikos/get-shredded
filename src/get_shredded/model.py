@@ -66,6 +66,14 @@ class SHRED(nn.Module):
         out = torch.relu(self.dropout(self.linear2(out)))
         return self.linear3(out)
 
+    def get_hidden_state(self, x: torch.Tensor) -> torch.Tensor:
+        """Return the final LSTM hidden state (B, hidden_size) without SDN decoding."""
+        device = next(self.parameters()).device
+        h_0 = torch.zeros(self.hidden_layers, x.size(0), self.hidden_size, device=device)
+        c_0 = torch.zeros(self.hidden_layers, x.size(0), self.hidden_size, device=device)
+        _, (h_out, _) = self.lstm(x, (h_0, c_0))
+        return h_out[-1].view(-1, self.hidden_size)
+
 
 class SDN(nn.Module):
     """Static Shallow Decoder Network: 3-layer FC mapping a single snapshot of
