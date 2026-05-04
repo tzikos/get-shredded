@@ -218,7 +218,7 @@ def plot_reconstruction_comparison(
     for row, t in enumerate(snaps):
         for col, (arr, label) in enumerate(zip(arrays, col_labels)):
             ax = axes[row, col]
-            im = ax.imshow(arr[t].reshape(nx, ny), vmin=vmin, vmax=vmax,
+            im = ax.imshow(arr[t].reshape(nx, ny, order="F"), vmin=vmin, vmax=vmax,
                            cmap="RdBu_r", origin="lower", aspect="auto")
             if row == 0:
                 ax.set_title(label, fontsize=8)
