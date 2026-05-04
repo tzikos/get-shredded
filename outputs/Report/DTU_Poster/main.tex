@@ -1,184 +1,200 @@
 %======================================================================
-%===  dtuposter - a class to make posters tha comply with the DTU CI
-%
-% Written and maintained in 2011-2014 
-% by Jorrit Wronski (jowr@mek.dtu.dk)
-%
-%
-%==========================================
-%===  details and poster setup
+%===  DTU Poster — SHRED Robustness Study
+%======================================================================
 \documentclass[
-%    ,title     = {{Title test}}
-%    ,author    = {{ThisIs MyName}}
-%    ,subject   = {{This is the subject of my work}}
-%    ,bgcolor   = dtulightgreen
-%    ,highlight = dtuyellow
-%    ,toplogo   = {{tex_dtu_aqua_b_uk}}
-%    ,botlogo   = {{tex_dtu_bibliotek_b_uk}}
-%    ,papersize = {{a0paper}}
-%    ,colcount  = {{1column}}
-%    ,longtitle
-%    ,largecaption
-%    ,draft
-%    ,nocrop
-%    ,english        % language
-%    ,fleqn          % equations on the left
+     title     = {{Robust Field Reconstruction from Sparse Sensors: SHRED vs SDN vs QR-POD under Sensor Corruption}}
+    ,author    = {{Kasper van der Horst \& Dimitris Papantzikos}}
+    ,subject   = {{Data-Driven Methods for Engineers --- Spring 2026}}
+    ,bgcolor   = dtucoolgrey
+    ,highlight = dtured
+    ,toplogo   = {{tex_dtu_logo_white}}
+    ,botlogo   = {{tex_dtu_compute_b_uk}}
+    ,papersize = {{a0paper}}
+    ,colcount  = {{3columns}}
+    ,longtitle
+    ,largecaption
 ]{dtuposter}
-%
-%
-%======================================================================
-%===  Continue with packages
-\usepackage[T1]{fontenc}        % special characters
-%
-%\usepackage[ansinew]{inputenc}  % Windows
-%\usepackage[applemac]{inputenc} % MacOS
-\usepackage[utf8x]{inputenc}    % Unicode, Linux
-%
-% 
-%======================================================================
-%=== Font definitions, DTU recommends Arial for posters
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8x]{inputenc}
 \usepackage{cmbright}
 \usepackage{arevmath}
-%\usepackage[scaled]{uarial} %Arial clone, set as default sf font - use "ua1" for direct access
-%\usepackage{uarial} %Arial clone, set as default sf font - use "ua1" for direct access
-%\usepackage[typeface=default,
-%            sanstypeface=urwarial,
-%            mathtypeface=arevmath
-%           ]{typeface}
 \renewcommand{\familydefault}{\sfdefault}
 \usepackage{enumitem}
-\setlist{nosep,leftmargin=*}
-%
-% 
-%======================================================================
-%=== Other useful packages
+\setlist{nosep,leftmargin=*,topsep=2pt}
 \usepackage{booktabs}
-\usepackage{siunitx}
-%
-% 
-%======================================================================
-%=== The actual content starts here
-\begin{document}
-%
-%
-%======================================================================
-%===  Make header for poster (title and authors)
-\begin{dtuposterhead} %
-\dtuposterauthor{First Author\textsuperscript{1,*}, Second Author\textsuperscript{2}}
-\dtuposteraffil{\textsuperscript{1} Technical University of Denmark, Department of Mechanical Engineering, Kgs. Lyngby, Denmark}
-\dtuposteraffil*{\textsuperscript{*} Corresponding author, Tel.: +45 4525 0000, Fax: +45 4588 0000, Email: name@mek.dtu.dk}
-\dtuposteraffil{\textsuperscript{2} RWTH Aachen University, E.ON Energy Research Center, Aachen, Germany}
-\end{dtuposterhead}
-%
-%
-%======================================================================
-%===  ... and the rest of the content
-\begin{dtupostercontent}
-\section{Introduction}
-In general, it should be straight forward to use this poster class. Please
-have a close look at this example file. I tried to exploit all special 
-features and left a lot of comments in the code. After reading this 
-guide, you are able to produce decent posters in the DTU layout with
-just a few lines of \LaTeX\ code. 
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{adjustbox}
 
-\section{Basic Options}
-When loading this poster class, you can pass some options to adapt the 
-file to your needs. There are two groups of options, key-value options 
-and simple options. Key-value options are used by writing the option 
-name, the key, followed by the value as in the examples below. 
-Unfortunately, you have to
-wrap it with curly brackets. Due to some problems with the option 
-processing, it is highly recommended to use pairs of two curly brackets
-for this purpose. The available key-value options and their 
-default values are:
+% Reduce title to ~65pt (longtitle default is 100pt)
+% This \AtBeginDocument runs after the class's own hook, overriding the komafont
+\makeatletter
+\AtBeginDocument{%
+  \setkomafont{title}{\normalfont\fontsize{65}{78}\selectfont\bfseries\color{\dtuposter@highlight}}%
+}
+\makeatother
+
+
+\begin{document}
+
+%======================================================================
+%===  Header
+\begin{dtuposterhead}
+\dtuposterauthor{Kasper van der Horst \& Dimitris Papantzikos}
+\dtuposteraffil{Technical University of Denmark, DTU Compute, Kgs.\ Lyngby, Denmark}
+\end{dtuposterhead}
+
+%======================================================================
+\begin{dtupostercontent}
+
+%==============================================================
+% COLUMN 1 — background & methods
+%==============================================================
+
+\section{Motivation}
+
+High-dimensional physical fields (e.g.\ fluid vorticity) are expensive
+to measure densely. A few strategically placed sensors can drive a
+learned decoder to reconstruct the full field---provided the decoder
+tolerates real-world sensor faults such as noise, signal loss, and
+burst interference.
+
+We benchmark three reconstruction methods across sensor budgets and
+corruption types, and assess whether corruption-matched augmentation
+during training improves robustness without hurting clean accuracy.
+
+\section{Methods}
+
+\textbf{SHRED} (SHallow REcurrent Decoder) [1] feeds a window of
+$L{=}10$ sensor readings into a two-layer LSTM (hidden size 64),
+then a three-layer MLP ($350{\to}400{\to}m$) predicts all $m$ field
+values simultaneously. Temporal context confers implicit robustness:
+corruption of a single timestep has limited effect on the hidden state.
+
+\textbf{SDN} ablates temporal history: one sensor snapshot feeds the
+same MLP directly, isolating the LSTM's contribution.
+
+\textbf{QR-POD} is a linear gappy-POD baseline. Sensor locations are
+chosen by QR-pivoted POD column selection. Reconstruction is an
+analytic least-squares solve---no training, no hyper-parameters.
+
+\section{Augmentation Strategies}
+
+Applied to sensor inputs during \emph{training only}; validation and
+test always use clean inputs:
 \begin{itemize}
-\item \texttt{title     = \{\{This is the Poster Title\}\}}
-\item \texttt{author    = \{\{This Ismyname\}\}}
-\item \texttt{subject   = \{\{Subject of the Poster\}\}}
-\item \texttt{bgcolor   = \{\{dtucoolgrey\}\}}
-\item \texttt{highlight = \{\{dtured\}}
-\item \texttt{toplogo   = \{\{tex\_dtu\_mekanik\_b\_uk\}}
-\item \texttt{botlogo   = \{\{tex\_dtu\_elektro\_b\_uk\}\}}
-\item \texttt{papersize = \{\{a0paper\}\}}
-\item \texttt{colcount  = \{\{3columns\}\}}
+  \item \emph{Clean}---no augmentation (baseline)
+  \item \emph{Gaussian}---additive noise ($\sigma{=}0.03$) on a random subset
+  \item \emph{Dropout}---random sensors zeroed out (one always survives)
+  \item \emph{Hybrid}---noise, zero-out, or nothing with equal probability
+  \item \emph{Burst}---temporally correlated burst-noise on random sensors
 \end{itemize}
 
-\texttt{title}, \texttt{author} and \texttt{subject} just take text or
-\LaTeX\ commands as inputs. \texttt{bgcolor} and \texttt{highlight} take 
-names of colours, make sure to use a colour that has already been defined.
-As the name suggests, \texttt{toplogo} and \texttt{botlogo} are interpreted
-as names of image files. \texttt{toplogo} is the image in the top left 
-corner and \texttt{botlogo} is the one that appears four times at the bottom.
-\texttt{papersize} can have the values \texttt{a0paper}, \texttt{a1paper}, 
-\texttt{a2paper}, \texttt{a3paper} or \texttt{a4paper}. Please note that the 
-font size will be changed accordingly. You can use this template for posters
-with up to three columns, \texttt{colcount} can be \texttt{3columns}, 
-\texttt{2columns} or \texttt{1column}. If you use less than three columns, 
-the test font size will be slightly increased.
+\section{Experimental Setup}
 
-The other options are activated by passing them to the class without any value.
-The option \texttt{longtitle} decreases the font font the title and is 
-particularly useful for posters with a long title, hence the name. 
-\texttt{largecaption} does the opposite with the captions for tables and figures 
-since I think that the default size of \SI{15}{pt} is quite small for a poster. 
-Passing \texttt{draft} to the class disables the inclusion of graphics and draws 
-a grid with \SI{2}{\centi\metre} spacing on top of the poster. The last option
-is \texttt{nocrop}. This disables the cropmarks and produces output that 
-exactly matches with dimensions specified in the \texttt{papesize} option. 
+2-D cylinder wake DNS at $Re{=}100$: $N{=}5{,}000$ snapshots on a
+$128{\times}64$ grid. Sequential split (train 4\,970 / val 20 / test 10).
+Sensor placement via QR-pivoted POD ($r{=}20$ retained modes).
+Adam optimiser, MSE loss, $lr{=}10^{-3}$, batch 64, early stopping
+with patience $5{\times}20{=}100$ validation epochs, best-weight restore.
+
+%==============================================================
+% COLUMN 2 — figure + references
+%==============================================================
+
+\section{Robustness Comparison (QR Placement)}
+
+\begin{figure}
+  \includegraphics[width=\linewidth]{%
+    ../../cylinder/robustness/robustness_bar_QR}
+  \caption{Relative $\ell_2$ error for QR sensor placement across all
+    corruption scenarios and sensor budgets (3, 5, 8 sensors).
+    \textbf{Solid}: clean test set.
+    \textbf{Hatched}: corrupted test set.
+    Each group pairs the clean-trained model with its corruption
+    specialist for SHRED, SDN, and QR-POD.}
+  \label{fig:robbar}
+\end{figure}
+
+%==============================================================
+% COLUMN 3 — key findings + table + conclusions
+%==============================================================
+
+\section{Key Findings}
+
+\begin{itemize}
+  \item SHRED and SDN beat QR-POD on \textbf{clean data} at every sensor
+        budget---by more than $10\times$ at 3 sensors (SHRED: 0.006 vs
+        QR-POD: 0.227).
+  \item Under \textbf{Gaussian noise}, clean-trained SHRED degrades only
+        mildly (0.006${\to}$0.010 at 5 sensors), suggesting the LSTM
+        averages out noise implicitly.
+  \item \textbf{Dropout} is the hardest corruption: clean models collapse
+        to $0.18$--$0.42$ error; specialist models recover to
+        $0.032$--$0.107$.
+  \item \textbf{Hybrid and Burst} are well handled by specialist SHRED
+        (errors $0.030$--$0.093$) with minimal clean-data penalty.
+  \item \textbf{QR-POD robustness} is competitive under Gaussian noise at
+        8 sensors (0.065), but is dominated everywhere else by the
+        neural methods.
+\end{itemize}
+
+\section{Error Table --- QR Placement}
 
 \begin{table}
-\caption{An example caption. Please note that there still is a bug that keeps the 
-caption from being centered if it is only a single line. It should work with multiple
-lines though}\label{tab:example}
-
-\begin{tabular}{llr}
+\caption{Relative $\ell_2$ reconstruction error (QR sensor placement).
+  \emph{Clean}: no augmentation. \emph{Spec.}: trained with augmentation
+  matching the test scenario. \textbf{Bold}: best in each row.}
+\label{tab:errors}
+\begin{adjustbox}{max width=\linewidth}
+\small
+\begin{tabular}{llccccc}
 \toprule
-\multicolumn{2}{c}{Item} \\
-\cmidrule(r){1-2}
-Animal    & Description & Price (\$) \\
+& & \multicolumn{2}{c}{SHRED} & \multicolumn{2}{c}{SDN} & \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}
+$n_s$ & Condition & Clean & Spec. & Clean & Spec. & QR-POD \\
 \midrule
-Gnat      & per gram    & 13.65      \\
-          & each        & 0.01       \\
-Gnu       & stuffed     & 92.50      \\
-Emu       & stuffed     & 33.33      \\
-Armadillo & frozen      & 8.99       \\
+\multirow{5}{*}{3}
+  & Clean    & \textbf{0.006} & {---}          & 0.007          & {---}          & 0.227 \\
+  & Gaussian & \textbf{0.010} & 0.013          & 0.024          & 0.216          & 0.226 \\
+  & Dropout  & 0.337          & 0.477          & 0.417          & \textbf{0.107} & 0.339 \\
+  & Hybrid   & 0.066          & \textbf{0.036} & 0.190          & 0.100          & 0.365 \\
+  & Burst    & 0.106          & \textbf{0.035} & 0.243          & 0.102          & 0.271 \\
+\midrule
+\multirow{5}{*}{5}
+  & Clean    & \textbf{0.006} & {---}          & 0.007          & {---}          & 0.172 \\
+  & Gaussian & \textbf{0.006} & 0.010          & 0.034          & 0.210          & 0.172 \\
+  & Dropout  & 0.178          & \textbf{0.032} & 0.281          & 0.097          & 0.406 \\
+  & Hybrid   & 0.136          & \textbf{0.093} & 0.316          & 0.369          & 0.312 \\
+  & Burst    & 0.061          & \textbf{0.036} & 0.265          & 0.089          & 0.236 \\
+\midrule
+\multirow{5}{*}{8}
+  & Clean    & \textbf{0.006} & {---}          & \textbf{0.006} & {---}          & 0.066 \\
+  & Gaussian & \textbf{0.008} & 0.010          & 0.032          & 0.237          & 0.065 \\
+  & Dropout  & 0.233          & \textbf{0.094} & 0.395          & 0.186          & 0.345 \\
+  & Hybrid   & 0.103          & \textbf{0.053} & 0.242          & 0.319          & 0.316 \\
+  & Burst    & 0.044          & \textbf{0.030} & 0.175          & 0.062          & 0.252 \\
 \bottomrule
 \end{tabular}
+\end{adjustbox}
 \end{table}
 
-\section{Special Environments}
-Please use the custom environments \texttt{dtuposterhead} and 
-\texttt{dtupostercontent}. You can format the list of authors and 
-their affiliations with the new commands \texttt{\textbackslash dtuposterauthor}
-and \texttt{\textbackslash dtuposteraffil}. Both commands have a starred version, 
-\texttt{\textbackslash dtuposterauthor*} and \texttt{\textbackslash dtuposteraffil*}, 
-which reduces the spacing. This can be used to show that two lines belong together, as
-done in this example file.
+\section{Conclusions}
 
-Figures and tables have gotten their own custom tags \texttt{table} and 
-\texttt{figure}, which define the caption style for you. With the \texttt{booktabs}
-package, you can show tabular data like in the example \autoref{tab:example}.
+SHRED's LSTM encoder provides strong baseline robustness through temporal
+averaging; augmentation extends this to dropout and burst faults with
+little clean-data penalty. SDN benefits similarly but degrades more under
+dropout. QR-POD is competitive under Gaussian noise at high sensor counts
+but dominated elsewhere. Temporal history is the key feature enabling
+robust sparse field reconstruction.
 
-For figures like \autoref{fig:example} and \autoref{fig:example2}, everything is 
-similar, just that the caption should be below the figure. 
+\section{References}
 
-\begin{figure}
-\includegraphics[width=.5\linewidth,angle=90,origin=c]{tex_dtu_logo}
-\caption{An example caption. This figure supports transparency and looks fine on 
-the coloured background}\label{fig:example}
-\end{figure}
-
-If you have a figure with white background or one that does not support transparency,
-you should draw a box around it to make it appear less alien on the coloured background.
-
-\begin{figure}
-  \begin{fadebox}\begin{center}
-    \includegraphics[width=.5\linewidth,angle=-90,origin=c]{tex_dtu_logo}
-  \end{center}\end{fadebox}
-  \caption{An example caption. Figures can be wrapped in the \texttt{fadebox} 
-environment to provide them with a white background. Note that you have to align the 
-figure again.}\label{fig:example2}
-\end{figure}
+[1]~J.\ Williams, O.\ Zahn, J.\ N.\ Kutz, ``Sensing with shallow
+recurrent decoder networks,'' \textit{Proc.\ R.\ Soc.\ A}
+480:20230816, 2024.
 
 \end{dtupostercontent}
 
