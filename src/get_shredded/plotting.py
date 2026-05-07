@@ -642,6 +642,21 @@ def plot_robustness_bar_sweep(
     n_cols = len(sensor_counts)
 
     for placement in placements:
+        # pre-compute global y-limit so all subplots are comparable
+        global_max = 0.0
+        for scenario in SCENARIOS:
+            for n in sensor_counts:
+                res = all_results.get((n, placement))
+                if res is None:
+                    continue
+                models = _scenario_model_order(res, scenario)
+                errs_c = [m.err_clean for m in models]
+                errs_n = [m.err_noisy[scenario] for m in models]
+                local_max = max(errs_c + errs_n)
+                if local_max > global_max:
+                    global_max = local_max
+        y_top = global_max * 1.25
+
         fig, axes = plt.subplots(
             n_rows, n_cols,
             figsize=(3.8 * n_cols, 3.6 * n_rows),
@@ -678,7 +693,7 @@ def plot_robustness_bar_sweep(
                 ax.set_xticks(x)
                 ax.set_xticklabels(names, fontsize=7, rotation=30, ha="right")
                 ax.grid(axis="y", alpha=0.3)
-                ax.set_ylim(0, max(errs_c + errs_n) * 1.25)
+                ax.set_ylim(0, y_top)
 
                 if row == 0:
                     ax.set_title(f"{n} sensors", fontsize=10, fontweight="bold")

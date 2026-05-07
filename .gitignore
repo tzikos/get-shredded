@@ -34,3 +34,6 @@ src/*.egg-info/
 .python-version
 
 .claude
+
+*.aux
+*.log

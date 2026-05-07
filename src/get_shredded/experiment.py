@@ -451,31 +451,26 @@ def run_robustness_comparison(
             state_dict={k: v.detach().cpu() for k, v in sdn.state_dict().items()},
         ))
 
-    # --- RobustSHRED ---
-    from .model import SHRED as VanillaSHRED
-    from .robust_model import RobustSHRED
+    # --- SensorGatedSHRED (robust) ---
+    from .robust_model import SensorGatedSHRED
     from .robust_train import fit_robust
 
-    vanilla_for_robust = VanillaSHRED(
+    vanilla_for_robust = SHRED(
         num_sensors, m,
         hidden_size=hidden_size, hidden_layers=hidden_layers,
         l1=l1, l2=l2, dropout=0.0,
     ).to(device)
 
-    robust_shred = RobustSHRED(
+    robust_shred = SensorGatedSHRED(
         num_sensors, m,
         hidden_size=hidden_size, hidden_layers=hidden_layers,
-        l1=l1, l2=l2, dropout=0.0, d_z=8,
+        l1=l1, l2=l2, dropout=0.0,
     ).to(device)
 
     robust_augment = make_batch_augmenter(
         "dropout", num_sensors,
         gaussian_std=gaussian_std, dropout_fill=dropout_fill,
     )
-
-    def _corrupt_labels(x_clean: torch.Tensor, x_aug: torch.Tensor) -> torch.Tensor:
-        diff = (x_clean - x_aug).abs().mean(dim=1)
-        return (diff < 1e-6).float()
 
     fit_robust(
         robust_shred, vanilla_for_robust,
@@ -485,7 +480,6 @@ def run_robustness_comparison(
         phase2_epochs=max(epochs // 2, 100), phase2_patience=patience, phase2_lr=lr,
         phase3_epochs=max(epochs // 5, 50), phase3_patience=patience, phase3_lr=lr * 0.1,
         augment_fn=robust_augment,
-        corrupt_labels_fn=_corrupt_labels,
         verbose=verbose,
     )
 

@@ -210,7 +210,6 @@
 %
 \PassOptionsToPackage{%
   centering,%
-  pdftex,%
   paperwidth=\dtuposterwidth pt,%
   paperheight=\dtuposterheight pt,%
   bindingoffset=0.0pt,
