@@ -59,7 +59,9 @@ High-dimensional physical fields (e.g.\ fluid vorticity) are expensive
 to measure densely. A few strategically placed sensors can drive a
 learned decoder to reconstruct the full field---provided the decoder
 tolerates real-world sensor faults such as noise, signal loss, and
-burst interference.
+burst interference. Which in theory should be possible as SHRED performs well
+at low number of sensors, motivitating the idea that even when not all sensors
+provide meaningfull readings, a good reconstruction should still be feasbible.
 
 We benchmark three reconstruction methods across sensor budgets and
 corruption types, and assess whether corruption-matched augmentation
@@ -139,6 +141,7 @@ with patience $5{\times}20{=}100$ validation epochs, best-weight restore.
   \item \textbf{QR-POD robustness} is competitive under Gaussian noise at
         8 sensors (0.065), but is dominated everywhere else by the
         neural methods.
+  \item Overall: while using data augmentation in training does show improvements. The results are still below what is achieved using SHRED and clean training data.
 \end{itemize}
 
 \section{Error Table --- QR Placement}
@@ -181,15 +184,14 @@ $n_s$ & Condition & Clean & Spec. & Clean & Spec. & QR-POD \\
 \end{adjustbox}
 \end{table}
 
-\section{Conclusions}
+\section{The limitations of SHRED}
 
-SHRED's LSTM encoder provides strong baseline robustness through temporal
-averaging; augmentation extends this to dropout and burst faults with
-little clean-data penalty. SDN benefits similarly but degrades more under
-dropout. QR-POD is competitive under Gaussian noise at high sensor counts
-but dominated elsewhere. Temporal history is the key feature enabling
-robust sparse field reconstruction.
-
+While Shred is shown to perform very well on clean data, even for very low number of sensors. There is a key limitation in the way the SHRED architecture handles especially sensor dropout.
+During training it has to learn specific mappings from the inputs of sensors to the output through the LSTM and SDN. The current architecture of shred is not able to effectively learn conficting sensor dropouts which have to map to the same output.
+So over the full training it learns a compromise between these readings, a compromise which is suboptimal for each seperate configuration.
+The only way for SHRED to be able to handle this is for the input to the LSTM to be a better representation of the physical system than the raw sensor inputs. This however is a highly nontrivial issue. 
+We did implement a variational state space approach extension to SHRED where the input was mapped to a latent space using an small encoder network.
+This approach proved highly unstable in training yielding greatly varying results across different seeds. Thus, this approach cannot yet be claimed to provide a solution to this problem. 
 \section{References}
 
 [1]~J.\ Williams, O.\ Zahn, J.\ N.\ Kutz, ``Sensing with shallow
