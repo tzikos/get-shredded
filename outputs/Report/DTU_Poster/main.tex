@@ -28,6 +28,7 @@
 \usepackage{amsmath}
 \usepackage{adjustbox}
 \usepackage{caption}
+\captionsetup{justification=raggedright, singlelinecheck=false}
 
 % Reduce title to ~65pt (longtitle default is 100pt)
 % This \AtBeginDocument runs after the class's own hook, overriding the komafont
@@ -65,11 +66,11 @@
 
 High-dimensional physical fields (e.g.\ fluid vorticity) are expensive
 to measure densely. A few strategically placed sensors can drive a
-learned decoder to reconstruct the full field---provided the decoder
+learned decoder to reconstruct the full field, given that the decoder
 tolerates real-world sensor faults such as noise, signal loss, and
 burst interference. Which in theory should be possible as SHRED performs well
 at low number of sensors, motivitating the idea that even when not all sensors
-provide meaningfull readings, a good reconstruction should still be feasbible.
+provide meaningful readings, a good reconstruction should still be feasible.
 
 We benchmark three reconstruction methods across sensor budgets and
 corruption types, and assess whether corruption-matched augmentation
@@ -92,20 +93,19 @@ analytic least-squares solve.
 
 \section{Augmentation Strategies}
 
-Applied to sensor inputs during \emph{training only}; validation and
-test always use clean inputs:
+Applied to sensor inputs during \emph{training only}; test inference always uses uncorrupted inputs:
 \begin{itemize}
-  \item \emph{Clean}: no augmentation (baseline)
-  \item \emph{Gaussian}: additive noise ($\sigma{=}0.03$) on a random subset
-  \item \emph{Dropout}: random sensors zeroed out (one always survives)
-  \item \emph{Hybrid}: noise, zero-out, or nothing with equal probability
-  \item \emph{Burst}: temporally correlated burst-noise on random sensors
+  \item \textit{Clean}: identity mapping; establishes the uncorrupted baseline
+  \item \textit{Gaussian}: $K{\sim}\mathcal{U}[0,N]$ sensors receive i.i.d.\ $\mathcal{N}(0,\sigma^2)$ additive noise
+  \item \textit{Dropout}: $K{\sim}\mathcal{U}[0,N{-}1]$ sensors zeroed
+  \item \textit{Hybrid}: each sensor independently corrupted with noise, zeroed, or left clean ($p{=}\tfrac{1}{3}$ each)
+  \item \textit{Burst}: a contiguous window of timesteps corrupts $K$ sensors with Gaussian noise, simulating a transient hardware fault
 \end{itemize}
 
 \section{Experimental Setup}
 
-2-D cylinder wake DNS at $Re{=}100$: $N{=}5{,}000$ snapshots on a
-$128{\times}64$ grid. Sequential split (train 4\,970 / val 20 / test 10).
+Two-dimensional cylinder wake: $N{=}151$ snapshots on a
+$199{\times}449$ grid (89\,351 spatial points). Sequential split (train 111 / val 20 / test 10).
 Sensor placement via QR-pivoted POD ($r{=}20$ retained modes).
 Adam optimiser, MSE loss, $lr{=}10^{-3}$, batch 64, early stopping
 with patience $5{\times}20{=}100$ validation epochs, best-weight restore.
@@ -147,7 +147,6 @@ with patience $5{\times}20{=}100$ validation epochs, best-weight restore.
   \item \textbf{QR-POD robustness} is competitive under Gaussian noise at
         8 sensors (0.065), but is dominated everywhere else by the
         neural methods.
-  \item Overall: while using data augmentation in training does show improvements. The results are still below what is achieved using SHRED and clean training data.
 \end{itemize}
 
 \section{Burst Reconstruction --- 5 Sensors, QR Placement}
@@ -158,14 +157,12 @@ with patience $5{\times}20{=}100$ validation epochs, best-weight restore.
   Rows show ground truth, clean-trained SHRED, burst-specialist SHRED, SDN, and QR-POD.}
 \label{fig:burst}
 
-\section{The limitations of SHRED}
+\section{Conclusions}
 
-While Shred is shown to perform very well on clean data, even for very low number of sensors. There is a key limitation in the way the SHRED architecture handles especially sensor dropout.
-During training it has to learn specific mappings from the inputs of sensors to the output through the LSTM and SDN. The current architecture of shred is not able to effectively learn conficting sensor dropouts which have to map to the same output.
-So over the full training it learns a compromise between these readings, a compromise which is suboptimal for each seperate configuration.
-The only way for SHRED to be able to handle this is for the input to the LSTM to be a better representation of the physical system than the raw sensor inputs. This however is a highly nontrivial issue. 
-We did implement a variational state space approach extension to SHRED where the input was mapped to a latent space using an small encoder network.
-This approach proved highly unstable in training yielding greatly varying results across different seeds. Thus, this approach cannot yet be claimed to provide a solution to this problem. 
+Corruption-matched augmentation consistently improves robustness: specialist SHRED models recover from dropout and burst corruption that defeat clean-trained models, with error reductions of up to $5\times$.
+Gaussian noise is handled well even without augmentation, as the LSTM implicitly averages out uncorrelated perturbations across the temporal window.
+Dropout remains the hardest scenario, particularly at 3 sensors where the information content after corruption is insufficient for reliable reconstruction regardless of training strategy.
+This points to a fundamental architectural constraint: SHRED learns fixed input-to-field mappings that cannot reconcile conflicting dropout configurations. Richer latent representations of the sensor state are a promising but non-trivial direction for future work.
 \section{References}
 
 [1]~J.\ Williams, O.\ Zahn, J.\ N.\ Kutz, ``Sensing with shallow
