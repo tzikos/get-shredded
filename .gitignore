@@ -37,3 +37,7 @@ src/*.egg-info/
 
 *.aux
 *.log
+
+*latexmk
+*fls
+*gz

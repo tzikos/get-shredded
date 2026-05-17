@@ -27,12 +27,20 @@
 \usepackage{graphicx}
 \usepackage{amsmath}
 \usepackage{adjustbox}
+\usepackage{caption}
 
 % Reduce title to ~65pt (longtitle default is 100pt)
 % This \AtBeginDocument runs after the class's own hook, overriding the komafont
 \makeatletter
 \AtBeginDocument{%
   \setkomafont{title}{\normalfont\fontsize{65}{78}\selectfont\bfseries\color{\dtuposter@highlight}}%
+  \setkomafont{minisec}{\normalfont\fontsize{42}{38}\selectfont\bfseries}%
+  \setkomafont{dictum}{\normalfont\fontsize{34}{32}\selectfont}%
+}
+\renewenvironment{dtuposterhead}{%
+  \flushleft {\usekomafont{title} \dtuposter@title } \par \vspace*{0.75\baselineskip}%
+}{%
+  \vspace*{0.75\baselineskip} \par%
 }
 \makeatother
 
@@ -80,18 +88,18 @@ same MLP directly, isolating the LSTM's contribution.
 
 \textbf{QR-POD} is a linear gappy-POD baseline. Sensor locations are
 chosen by QR-pivoted POD column selection. Reconstruction is an
-analytic least-squares solve---no training, no hyper-parameters.
+analytic least-squares solve.
 
 \section{Augmentation Strategies}
 
 Applied to sensor inputs during \emph{training only}; validation and
 test always use clean inputs:
 \begin{itemize}
-  \item \emph{Clean}---no augmentation (baseline)
-  \item \emph{Gaussian}---additive noise ($\sigma{=}0.03$) on a random subset
-  \item \emph{Dropout}---random sensors zeroed out (one always survives)
-  \item \emph{Hybrid}---noise, zero-out, or nothing with equal probability
-  \item \emph{Burst}---temporally correlated burst-noise on random sensors
+  \item \emph{Clean}: no augmentation (baseline)
+  \item \emph{Gaussian}: additive noise ($\sigma{=}0.03$) on a random subset
+  \item \emph{Dropout}: random sensors zeroed out (one always survives)
+  \item \emph{Hybrid}: noise, zero-out, or nothing with equal probability
+  \item \emph{Burst}: temporally correlated burst-noise on random sensors
 \end{itemize}
 
 \section{Experimental Setup}
@@ -108,17 +116,15 @@ with patience $5{\times}20{=}100$ validation epochs, best-weight restore.
 
 \section{Robustness Comparison (QR Placement)}
 
-\begin{figure}
-  \includegraphics[width=\linewidth]{%
-    ../../cylinder/robustness/robustness_bar_QR}
-  \caption{Relative $\ell_2$ error for QR sensor placement across all
-    corruption scenarios and sensor budgets (3, 5, 8 sensors).
-    \textbf{Solid}: clean test set.
-    \textbf{Hatched}: corrupted test set.
-    Each group pairs the clean-trained model with its corruption
-    specialist for SHRED, SDN, and QR-POD.}
-  \label{fig:robbar}
-\end{figure}
+\noindent\includegraphics[width=\linewidth]{%
+  ../../cylinder/robustness/robustness_bar_QR}
+\captionof{figure}{Relative $\ell_2$ error for QR sensor placement across all
+  corruption scenarios and sensor budgets (3, 5, 8 sensors).
+  \textbf{Solid}: clean test set.
+  \textbf{Hatched}: corrupted test set.
+  Each group pairs the clean-trained model with its corruption
+  specialist for SHRED, SDN, and QR-POD.}
+\label{fig:robbar}
 
 %==============================================================
 % COLUMN 3 — key findings + table + conclusions
@@ -144,45 +150,13 @@ with patience $5{\times}20{=}100$ validation epochs, best-weight restore.
   \item Overall: while using data augmentation in training does show improvements. The results are still below what is achieved using SHRED and clean training data.
 \end{itemize}
 
-\section{Error Table --- QR Placement}
+\section{Burst Reconstruction --- 5 Sensors, QR Placement}
 
-\begin{table}
-\caption{Relative $\ell_2$ reconstruction error (QR sensor placement).
-  \emph{Clean}: no augmentation. \emph{Spec.}: trained with augmentation
-  matching the test scenario. \textbf{Bold}: best in each row.}
-\label{tab:errors}
-\begin{adjustbox}{max width=\linewidth}
-\small
-\begin{tabular}{llccccc}
-\toprule
-& & \multicolumn{2}{c}{SHRED} & \multicolumn{2}{c}{SDN} & \\
-\cmidrule(lr){3-4}\cmidrule(lr){5-6}
-$n_s$ & Condition & Clean & Spec. & Clean & Spec. & QR-POD \\
-\midrule
-\multirow{5}{*}{3}
-  & Clean    & \textbf{0.006} & {---}          & 0.007          & {---}          & 0.227 \\
-  & Gaussian & \textbf{0.010} & 0.013          & 0.024          & 0.216          & 0.226 \\
-  & Dropout  & 0.337          & 0.477          & 0.417          & \textbf{0.107} & 0.339 \\
-  & Hybrid   & 0.066          & \textbf{0.036} & 0.190          & 0.100          & 0.365 \\
-  & Burst    & 0.106          & \textbf{0.035} & 0.243          & 0.102          & 0.271 \\
-\midrule
-\multirow{5}{*}{5}
-  & Clean    & \textbf{0.006} & {---}          & 0.007          & {---}          & 0.172 \\
-  & Gaussian & \textbf{0.006} & 0.010          & 0.034          & 0.210          & 0.172 \\
-  & Dropout  & 0.178          & \textbf{0.032} & 0.281          & 0.097          & 0.406 \\
-  & Hybrid   & 0.136          & \textbf{0.093} & 0.316          & 0.369          & 0.312 \\
-  & Burst    & 0.061          & \textbf{0.036} & 0.265          & 0.089          & 0.236 \\
-\midrule
-\multirow{5}{*}{8}
-  & Clean    & \textbf{0.006} & {---}          & \textbf{0.006} & {---}          & 0.066 \\
-  & Gaussian & \textbf{0.008} & 0.010          & 0.032          & 0.237          & 0.065 \\
-  & Dropout  & 0.233          & \textbf{0.094} & 0.395          & 0.186          & 0.345 \\
-  & Hybrid   & 0.103          & \textbf{0.053} & 0.242          & 0.319          & 0.316 \\
-  & Burst    & 0.044          & \textbf{0.030} & 0.175          & 0.062          & 0.252 \\
-\bottomrule
-\end{tabular}
-\end{adjustbox}
-\end{table}
+\noindent\includegraphics[width=\linewidth]{%
+  ../../cylinder/robustness/sensors_5_QR/panel_burst}
+\captionof{figure}{Field reconstruction under burst sensor corruption (5 sensors, QR placement).
+  Rows show ground truth, clean-trained SHRED, burst-specialist SHRED, SDN, and QR-POD.}
+\label{fig:burst}
 
 \section{The limitations of SHRED}
 
