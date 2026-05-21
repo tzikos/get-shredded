@@ -4,59 +4,28 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .data import qr_place, qrpod_reconstruct
+
 
 @dataclass
-class PODDMDBaseline:
-    latent_dim: int
-    ridge: float = 1e-6
-    A: np.ndarray | None = None
+class QRPODBaseline:
+    """Linear gappy-POD reconstruction with QR-pivoted sensor placement
+    (the linear baseline from Williams, Zahn, Kutz 2024)."""
 
-    def fit_from_latent_series(self, latent: np.ndarray) -> None:
-        # latent: (latent_dim, T)
-        if latent.ndim != 2:
-            raise ValueError("latent must have shape (latent_dim, T)")
-        if latent.shape[1] < 2:
-            raise ValueError("Need at least two timesteps to fit DMD")
+    num_sensors: int
+    sensor_locations: np.ndarray | None = None
+    U_r: np.ndarray | None = None
+    m: int | None = None
 
-        x = latent[:, :-1]
-        y = latent[:, 1:]
-        xx_t = x @ x.T
-        reg = self.ridge * np.eye(xx_t.shape[0], dtype=latent.dtype)
-        self.A = (y @ x.T) @ np.linalg.inv(xx_t + reg)
+    def fit(self, train_X: np.ndarray) -> None:
+        """train_X: (N_train, m). Computes POD basis and QR sensor locations."""
+        self.m = train_X.shape[1]
+        self.sensor_locations, self.U_r = qr_place(train_X.T, self.num_sensors)
 
-    def fit(self, x_seq: np.ndarray, y_next: np.ndarray) -> None:
-        # Fit from windowed data using the last state in each window.
-        # x_seq: (N, seq_len, latent_dim), y_next: (N, latent_dim)
-        if x_seq.ndim != 3:
-            raise ValueError("x_seq must have shape (N, seq_len, latent_dim)")
-        if y_next.ndim != 2:
-            raise ValueError("y_next must have shape (N, latent_dim)")
-        if x_seq.shape[-1] != self.latent_dim or y_next.shape[-1] != self.latent_dim:
-            raise ValueError("Input latent dimension does not match model latent_dim")
-
-        x_t = x_seq[:, -1, :].T  # (latent_dim, N)
-        y_t = y_next.T  # (latent_dim, N)
-        xx_t = x_t @ x_t.T
-        reg = self.ridge * np.eye(xx_t.shape[0], dtype=x_seq.dtype)
-        self.A = (y_t @ x_t.T) @ np.linalg.inv(xx_t + reg)
-
-    def predict(self, x_seq: np.ndarray) -> np.ndarray:
-        if self.A is None:
-            raise RuntimeError("Baseline model must be fit before prediction")
-        if x_seq.ndim != 3:
-            raise ValueError("x_seq must have shape (N, seq_len, latent_dim)")
-        x_t = x_seq[:, -1, :]  # (N, latent_dim)
-        return x_t @ self.A.T
-
-    def rollout(self, seed_sequence: np.ndarray, horizon: int) -> np.ndarray:
-        # seed_sequence: (1, seq_len, latent_dim)
-        if self.A is None:
-            raise RuntimeError("Baseline model must be fit before rollout")
-        if seed_sequence.shape[0] != 1:
-            raise ValueError("seed_sequence must have batch size 1")
-        current_state = seed_sequence[0, -1, :].copy()  # (latent_dim,)
-        outputs = []
-        for _ in range(horizon):
-            current_state = self.A @ current_state
-            outputs.append(current_state.copy())
-        return np.asarray(outputs, dtype=seed_sequence.dtype)
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """X: (T, m) ground-truth snapshots; we sample at the QR locations and
+        reconstruct via x_hat = U_r (C U_r)^{-1} y."""
+        if self.U_r is None or self.sensor_locations is None or self.m is None:
+            raise RuntimeError("Call fit() before predict()")
+        sensor_measurements = X[:, self.sensor_locations]
+        return qrpod_reconstruct(sensor_measurements, self.sensor_locations, self.U_r, self.m)

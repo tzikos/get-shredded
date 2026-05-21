@@ -1,0 +1,31 @@
+defaults:
+  - default
+  - noise: disabled
+  - _self_
+
+data:
+  mat: data/CYLINDER_ALL.mat
+  test_size: 10
+  val_size: 20
+
+model:
+  lags: 10
+  hidden_size: 64
+  hidden_layers: 2
+  l1: 350
+  l2: 400
+  dropout: 0.0
+
+train:
+  epochs: 1000
+  batch_size: 64
+  lr: 1.0e-3
+  patience: 5
+
+sweep:
+  sensor_counts: [1, 2, 3, 5, 8, 12, 20]
+  placements: [QR, random]
+  seeds: [0, 1, 2]        # median over these seeds at each (sensor count, placement)
+
+outputs:
+  root: outputs/cylinder

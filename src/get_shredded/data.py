@@ -1,63 +1,60 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import scipy.linalg
 from scipy.io import loadmat
 
 
-@dataclass
-class PODBasis:
-    mean: np.ndarray
-    modes: np.ndarray
-
-
 def load_cylinder_data(mat_path: str | Path) -> tuple[np.ndarray, int, int]:
+    """Returns (load_X, nx, ny) where load_X has shape (N, m): N temporal
+    snapshots of an m-dimensional state — the convention used in the paper."""
     data = loadmat(str(mat_path))
     if "VORTALL" not in data:
         raise KeyError("Expected key 'VORTALL' in .mat file")
-    x = np.asarray(data["VORTALL"], dtype=np.float32)
+    vortall = np.asarray(data["VORTALL"], dtype=np.float32)
+    load_X = vortall.T
     nx = int(data.get("nx", [[0]])[0][0])
     ny = int(data.get("ny", [[0]])[0][0])
-    return x, nx, ny
+    return load_X, nx, ny
 
 
-def split_time_series(
-    x: np.ndarray, train_ratio: float = 0.7, val_ratio: float = 0.15
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    t = x.shape[1]
-    t_train = int(t * train_ratio)
-    t_val = int(t * (train_ratio + val_ratio))
-    return x[:, :t_train], x[:, t_train:t_val], x[:, t_val:]
+def qr_place(data_matrix: np.ndarray, num_sensors: int) -> tuple[np.ndarray, np.ndarray]:
+    """QR-pivoting sensor selection on the rank-`num_sensors` POD basis.
+
+    data_matrix: (m, N) — m-dimensional state, N snapshots.
+    Returns (sensor_locs, U_r) with U_r the leading `num_sensors` POD modes.
+    """
+    u, _, _ = np.linalg.svd(data_matrix, full_matrices=False)
+    U_r = u[:, :num_sensors]
+    _, _, pivot = scipy.linalg.qr(U_r.T, pivoting=True)
+    sensor_locs = pivot[:num_sensors]
+    return sensor_locs, U_r
 
 
-def fit_pod(x_train: np.ndarray, rank: int) -> PODBasis:
-    mean = x_train.mean(axis=1, keepdims=True)
-    x_centered = x_train - mean
-    u, _, _ = np.linalg.svd(x_centered, full_matrices=False)
-    modes = u[:, :rank]
-    return PODBasis(mean=mean, modes=modes)
+def build_sensor_windows(
+    transformed_X: np.ndarray, sensor_locations: np.ndarray, lags: int
+) -> np.ndarray:
+    """transformed_X: (N, m). Returns (N - lags, lags, num_sensors)."""
+    n = transformed_X.shape[0]
+    num_sensors = len(sensor_locations)
+    out = np.zeros((n - lags, lags, num_sensors), dtype=np.float32)
+    for i in range(n - lags):
+        out[i] = transformed_X[i : i + lags, sensor_locations]
+    return out
 
 
-def project_to_latent(x: np.ndarray, basis: PODBasis) -> np.ndarray:
-    x_centered = x - basis.mean
-    return basis.modes.T @ x_centered
+def qrpod_reconstruct(
+    sensor_measurements: np.ndarray, sensor_locations: np.ndarray, U_r: np.ndarray, m: int
+) -> np.ndarray:
+    """Linear QR/POD reconstruction: x_hat = U_r (C U_r)^{-1} y.
 
-
-def reconstruct_from_latent(latent: np.ndarray, basis: PODBasis) -> np.ndarray:
-    return basis.modes @ latent + basis.mean
-
-
-def make_windows(latent: np.ndarray, seq_len: int) -> tuple[np.ndarray, np.ndarray]:
-    # latent: (rank, T)
-    rank, t = latent.shape
-    if t <= seq_len:
-        raise ValueError("Need more timesteps than seq_len")
-
-    x_seq = []
-    y_next = []
-    for idx in range(t - seq_len):
-        x_seq.append(latent[:, idx : idx + seq_len].T)
-        y_next.append(latent[:, idx + seq_len])
-    return np.asarray(x_seq, dtype=np.float32), np.asarray(y_next, dtype=np.float32)
+    sensor_measurements: (T, num_sensors) in the original (unscaled) units.
+    Returns (T, m).
+    """
+    num_sensors = len(sensor_locations)
+    C = np.zeros((num_sensors, m), dtype=U_r.dtype)
+    for i in range(num_sensors):
+        C[i, sensor_locations[i]] = 1.0
+    return (U_r @ np.linalg.inv(C @ U_r) @ sensor_measurements.T).T

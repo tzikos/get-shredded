@@ -1,76 +1,97 @@
+"""Train SHRED + SDN, compute QR/POD baseline, save metrics + plots + GIF."""
 from __future__ import annotations
 
-import argparse
+import sys
 from pathlib import Path
 
+import hydra
 import numpy as np
 import torch
+from hydra.utils import to_absolute_path
+from omegaconf import DictConfig, OmegaConf
 
-from get_shredded.data import (
-    fit_pod,
-    load_cylinder_data,
-    make_windows,
-    project_to_latent,
-    reconstruct_from_latent,
-    split_time_series,
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from get_shredded.experiment import run_experiment
+from get_shredded.plotting import (
+    animate_reconstructions,
+    plot_per_snapshot_error,
+    plot_reconstruction_panel,
+    plot_training_curves,
 )
-from get_shredded.train import TrainConfig, mse_on_windows, train_model
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="SHRED baseline on cylinder-vortex data")
-    parser.add_argument("--data-mat", type=Path, default=Path("../../DATA/FLUIDS/CYLINDER_ALL.mat"))
-    parser.add_argument("--rank", type=int, default=20)
-    parser.add_argument("--seq-len", type=int, default=12)
-    parser.add_argument("--epochs", type=int, default=200)
-    parser.add_argument("--hidden-dim", type=int, default=64)
-    parser.add_argument("--rnn-type", choices=["gru", "lstm"], default="gru")
-    parser.add_argument("--seed", type=int, default=42)
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-
-    x, _, _ = load_cylinder_data(args.data_mat)
-    x_train, x_val, x_test = split_time_series(x)
-
-    basis = fit_pod(x_train, rank=args.rank)
-    z_train = project_to_latent(x_train, basis)
-    z_val = project_to_latent(x_val, basis)
-    z_test = project_to_latent(x_test, basis)
-
-    xw_train, yw_train = make_windows(z_train, seq_len=args.seq_len)
-    xw_val, yw_val = make_windows(z_val, seq_len=args.seq_len)
-    xw_test, yw_test = make_windows(z_test, seq_len=args.seq_len)
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    cfg = TrainConfig(
-        epochs=args.epochs,
-        hidden_dim=args.hidden_dim,
-        rnn_type=args.rnn_type,
-        device=device,
+@hydra.main(version_base=None, config_path="../configs", config_name="cylinder_baseline")
+def main(cfg: DictConfig) -> None:
+    result = run_experiment(
+        mat_path=Path(to_absolute_path(cfg.data.mat)),
+        num_sensors=int(cfg.model.num_sensors),
+        lags=int(cfg.model.lags),
+        placement=str(cfg.model.placement),
+        test_size=int(cfg.data.test_size),
+        val_size=int(cfg.data.val_size),
+        hidden_size=int(cfg.model.hidden_size),
+        hidden_layers=int(cfg.model.hidden_layers),
+        l1=int(cfg.model.l1),
+        l2=int(cfg.model.l2),
+        dropout=float(cfg.model.dropout),
+        epochs=int(cfg.train.epochs),
+        batch_size=int(cfg.train.batch_size),
+        lr=float(cfg.train.lr),
+        patience=int(cfg.train.patience),
+        seed=int(cfg.seed),
+        noise_enabled=bool(cfg.noise.enabled),
+        noise_modes=[str(mode) for mode in cfg.noise.modes],
+        noise_white_std=float(cfg.noise.white_std),
+        noise_none_fill_value=float(cfg.noise.none_fill_value),
+        noise_auto_extend=bool(cfg.noise.auto_extend),
+        noise_default_mode=str(cfg.noise.default_mode),
+        noise_seed=int(cfg.noise.seed) if cfg.noise.seed is not None else None,
+        verbose=True,
     )
 
-    model, history = train_model(xw_train, yw_train, xw_val, yw_val, cfg)
-    test_mse = mse_on_windows(model, xw_test, yw_test, device=device)
+    print(f"\nNum sensors: {result.num_sensors} | Placement: {result.placement} | Lags: {result.lags}")
+    print(f"SHRED   relative L2 error: {result.shred_err:.6f}")
+    print(f"SDN     relative L2 error: {result.sdn_err:.6f}")
+    print(f"QR/POD  relative L2 error: {result.qrpod_err:.6f}")
 
-    seed_seq = torch.from_numpy(xw_test[:1]).to(device)
-    horizon = min(30, yw_test.shape[0])
-    rollout_latent = model.rollout(seed_seq, horizon=horizon).cpu().numpy().T
-    target_latent = z_test[:, args.seq_len : args.seq_len + horizon]
+    outputs_root = Path(to_absolute_path(cfg.outputs.root))
+    recon_dir = outputs_root / "reconstructions"
+    curves_dir = outputs_root / "curves"
 
-    x_rollout = reconstruct_from_latent(rollout_latent, basis)
-    x_target = reconstruct_from_latent(target_latent, basis)
-    rollout_rmse = float(np.sqrt(np.mean((x_rollout - x_target) ** 2)))
+    n_test = result.truth.shape[0]
+    snap_indices = sorted({0, n_test // 2, n_test - 1})
+    plot_reconstruction_panel(result, snap_indices, recon_dir / "panel.png")
+    animate_reconstructions(result, recon_dir / "comparison.gif", fps=int(cfg.outputs.gif_fps))
+    plot_per_snapshot_error(result, curves_dir / "per_snapshot_error.png")
+    plot_training_curves(result, curves_dir / "training_curves.png")
+    print(f"Saved plots under {outputs_root}/")
 
-    print("Training complete")
-    print(f"Final train loss: {history['train_loss'][-1]:.6e}")
-    print(f"Final val loss:   {history['val_loss'][-1]:.6e}")
-    print(f"Test one-step MSE (latent): {test_mse:.6e}")
-    print(f"Rollout RMSE (full field, {horizon} steps): {rollout_rmse:.6e}")
+    if cfg.checkpoint.enabled:
+        ckpt_dir = Path(to_absolute_path(cfg.checkpoint.dir))
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        ckpt = ckpt_dir / str(cfg.checkpoint.name)
+
+        torch.save(
+            {
+                "sensor_locations": result.sensor_locations,
+                "shred_state_dict": result.shred_state_dict,
+                "sdn_state_dict": result.sdn_state_dict,
+                "shred_val_history": result.shred_val_history,
+                "sdn_val_history": result.sdn_val_history,
+                "config": OmegaConf.to_container(cfg, resolve=True),
+                "metrics": {
+                    "shred_err": result.shred_err,
+                    "sdn_err": result.sdn_err,
+                    "qrpod_err": result.qrpod_err,
+                },
+            },
+            ckpt,
+        )
+        print(f"Saved metrics: {ckpt}")
 
 
 if __name__ == "__main__":

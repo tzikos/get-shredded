@@ -1,7 +1,36 @@
-data_mat: ../../DATA/FLUIDS/CYLINDER_ALL.mat
-rank: 20
-seq_len: 12
-epochs: 200
-hidden_dim: 64
-rnn_type: gru
+defaults:
+  - default
+  - noise: disabled
+  - _self_
+
+data:
+  mat: data/CYLINDER_ALL.mat
+  test_size: 10           # last `test_size` windows held out (sequential split)
+  val_size: 20            # last `val_size` windows of the remainder used for validation
+
+model:
+  num_sensors: 3
+  lags: 10                # cylinder data is short (~150 snapshots)
+  placement: QR           # "QR" or "random"
+  hidden_size: 64
+  hidden_layers: 2
+  l1: 350
+  l2: 400
+  dropout: 0.0
+
+train:
+  epochs: 1000
+  batch_size: 64
+  lr: 1.0e-3
+  patience: 5
+
+checkpoint:
+  enabled: true
+  dir: models
+  name: shred_baseline.pt
+
+outputs:
+  root: outputs/cylinder
+  gif_fps: 4
+
 seed: 42

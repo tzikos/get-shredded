@@ -1,0 +1,174 @@
+%======================================================================
+%===  DTU Poster — SHRED Robustness Study
+%======================================================================
+\documentclass[
+     title     = {{Robust Field Reconstruction from Sparse Sensors: SHRED vs SDN vs QR-POD under Sensor Corruption}}
+    ,author    = {{Kasper van der Horst and Dimitris Papantzikos}}
+    ,subject   = {{Data-Driven Methods for Computational Science and Engineering --- Spring 2026}}
+    ,bgcolor   = dtucoolgrey
+    ,highlight = dtured
+    ,toplogo   = {{tex_dtu_logo_white}}
+    ,botlogo   = {{tex_dtu_compute_b_uk}}
+    ,papersize = {{a0paper}}
+    ,colcount  = {{3columns}}
+    ,longtitle
+    ,largecaption
+]{dtuposter}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8x]{inputenc}
+\usepackage{cmbright}
+\usepackage{arevmath}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage{enumitem}
+\setlist{nosep,leftmargin=*,topsep=2pt}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{adjustbox}
+\usepackage{caption}
+\captionsetup{justification=raggedright, singlelinecheck=false}
+
+% Reduce title to ~65pt (longtitle default is 100pt)
+% This \AtBeginDocument runs after the class's own hook, overriding the komafont
+\makeatletter
+\AtBeginDocument{%
+  \setkomafont{title}{\normalfont\fontsize{65}{78}\selectfont\bfseries\color{\dtuposter@highlight}}%
+  \setkomafont{minisec}{\normalfont\fontsize{42}{38}\selectfont\bfseries}%
+  \setkomafont{dictum}{\normalfont\fontsize{34}{32}\selectfont}%
+}
+\renewenvironment{dtuposterhead}{%
+  \flushleft {\usekomafont{title} \dtuposter@title } \par \vspace*{0.75\baselineskip}%
+}{%
+  \vspace*{0.75\baselineskip} \par%
+}
+\makeatother
+
+
+\begin{document}
+
+%======================================================================
+%===  Header
+\begin{dtuposterhead}
+\dtuposterauthor{Kasper van der Horst \& Dimitris Papantzikos}
+\dtuposteraffil{Technical University of Denmark, DTU Compute, Kgs.\ Lyngby, Denmark}
+\end{dtuposterhead}
+
+%======================================================================
+\begin{dtupostercontent}
+
+%==============================================================
+% COLUMN 1 — background & methods
+%==============================================================
+
+\section{Motivation}
+
+High-dimensional physical fields (e.g.\ fluid vorticity) are expensive
+to measure densely. A few strategically placed sensors can drive a
+learned decoder to reconstruct the full field, given that the decoder
+tolerates real-world sensor faults such as noise, signal loss, and
+burst interference. Which in theory should be possible as SHRED performs well
+at low number of sensors, motivitating the idea that even when not all sensors
+provide meaningful readings, a good reconstruction should still be feasible.
+
+We benchmark three reconstruction methods across sensor budgets and
+corruption types, and assess whether corruption-matched augmentation
+during training improves robustness without hurting clean accuracy.
+
+\section{Methods}
+
+\textbf{SHRED} (SHallow REcurrent Decoder) [1] feeds a window of
+$L{=}10$ sensor readings into a two-layer LSTM (hidden size 64),
+then a three-layer MLP ($350{\to}400{\to}m$) predicts all $m$ field
+values simultaneously. Temporal context confers implicit robustness:
+corruption of a single timestep has limited effect on the hidden state.
+
+\textbf{SDN} ablates temporal history: one sensor snapshot feeds the
+same MLP directly, isolating the LSTM's contribution.
+
+\textbf{QR-POD} is a linear gappy-POD baseline. Sensor locations are
+chosen by QR-pivoted POD column selection. Reconstruction is an
+analytic least-squares solve.
+
+\section{Augmentation Strategies}
+
+Applied to sensor inputs during \emph{training only}; test inference always uses uncorrupted inputs:
+\begin{itemize}
+  \item \textit{Clean}: identity mapping; establishes the uncorrupted baseline
+  \item \textit{Gaussian}: $K{\sim}\mathcal{U}[0,N]$ sensors receive i.i.d.\ $\mathcal{N}(0,\sigma^2)$ additive noise
+  \item \textit{Dropout}: $K{\sim}\mathcal{U}[0,N{-}1]$ sensors zeroed
+  \item \textit{Hybrid}: each sensor independently corrupted with noise, zeroed, or left clean ($p{=}\tfrac{1}{3}$ each)
+  \item \textit{Burst}: a contiguous window of timesteps corrupts $K$ sensors with Gaussian noise, simulating a transient hardware fault
+\end{itemize}
+
+\section{Experimental Setup}
+
+Two-dimensional cylinder wake: $N{=}151$ snapshots on a
+$199{\times}449$ grid (89\,351 spatial points). Sequential split (train 111 / val 20 / test 10).
+Sensor placement via QR-pivoted POD ($r{=}20$ retained modes).
+Adam optimiser, MSE loss, $lr{=}10^{-3}$, batch 64, early stopping
+with patience $5{\times}20{=}100$ validation epochs, best-weight restore.
+
+%==============================================================
+% COLUMN 2 — figure + references
+%==============================================================
+
+\section{Robustness Comparison (QR Placement)}
+
+\noindent\includegraphics[width=\linewidth]{%
+  ../../cylinder/robustness/robustness_bar_QR}
+\captionof{figure}{Relative $\ell_2$ error for QR sensor placement across all
+  corruption scenarios and sensor budgets (3, 5, 8 sensors).
+  \textbf{Solid}: clean test set.
+  \textbf{Hatched}: corrupted test set.
+  Each group pairs the clean-trained model with its corruption
+  specialist for SHRED, SDN, and QR-POD.}
+\label{fig:robbar}
+
+%==============================================================
+% COLUMN 3 — key findings + table + conclusions
+%==============================================================
+
+\section{Key Findings}
+
+\begin{itemize}
+  \item SHRED and SDN beat QR-POD on \textbf{clean data} at every sensor
+        budget, by more than $10\times$ at 3 sensors (SHRED: 0.006 vs
+        QR-POD: 0.227).
+  \item Under \textbf{Gaussian noise}, clean-trained SHRED degrades only
+        mildly (0.006${\to}$0.010 at 5 sensors), suggesting the LSTM
+        averages out noise implicitly.
+  \item \textbf{Dropout} is the hardest corruption: clean models collapse
+        to $0.18$--$0.42$ error; specialist models recover to
+        $0.032$--$0.107$.
+  \item \textbf{Hybrid and Burst} are well handled by specialist SHRED
+        (errors $0.030$--$0.093$) with minimal clean-data penalty.
+  \item \textbf{QR-POD robustness} is competitive under Gaussian noise at
+        8 sensors (0.065), but is dominated everywhere else by the
+        neural methods.
+\end{itemize}
+
+\section{Burst Reconstruction: 5 Sensors, QR Placement}
+
+\noindent\includegraphics[width=\linewidth]{%
+  ../../cylinder/robustness/sensors_5_QR/panel_burst}
+\captionof{figure}{Field reconstruction under burst sensor corruption (5 sensors, QR placement).
+  Rows show ground truth, clean-trained SHRED, burst-specialist SHRED, SDN, and QR-POD.}
+\label{fig:burst}
+
+\section{Conclusions}
+
+Corruption-matched augmentation consistently improves robustness: specialist SHRED models recover from dropout and burst corruption that defeat clean-trained models, with error reductions of up to $5\times$.
+Gaussian noise is handled well even without augmentation, as the LSTM implicitly averages out uncorrelated perturbations across the temporal window.
+Dropout remains the hardest scenario, particularly at 3 sensors where the information content after corruption is insufficient for reliable reconstruction regardless of training strategy.
+This points to a fundamental architectural constraint: SHRED learns fixed input-to-field mappings that cannot reconcile conflicting dropout configurations. Richer latent representations of the sensor state are a promising but non-trivial direction for future work.
+\section{References}
+
+[1]~J.\ Williams, O.\ Zahn, J.\ N.\ Kutz, ``Sensing with shallow
+recurrent decoder networks,'' \textit{Proc.\ R.\ Soc.\ A}
+480:20230816, 2024.
+
+\end{dtupostercontent}
+
+\end{document}

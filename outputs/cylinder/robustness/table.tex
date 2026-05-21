@@ -1,0 +1,71 @@
+\begin{table}[ht]
+\centering
+\caption{Reconstruction error (3 sensors, QR placement). Bold = best in column.}
+\label{tab:robustness_3_QR}
+\begin{tabular}{lrrrrr}
+\toprule
+Model & Clean & Gaussian Noise & Sensor Dropout & Hybrid & Burst Noise \\
+\midrule
+SHRED\textendash clean & \textbf{0.0060} & \textbf{0.0096} & 0.3366 & 0.0664 & 0.1061 \\
+SDN\textendash clean & 0.0070 & 0.0238 & 0.4173 & 0.1896 & 0.2430 \\
+SHRED\textendash gaussian & 0.0110 & 0.0128 & 0.3286 & 0.0588 & 0.0780 \\
+SDN\textendash gaussian & 0.2149 & 0.2156 & 0.4299 & 0.2642 & 0.2981 \\
+SHRED\textendash dropout & 0.4763 & 0.4763 & 0.4767 & 0.4764 & 0.4762 \\
+SDN\textendash dropout & 0.0469 & 0.0620 & 0.1066 & 0.0742 & 0.2609 \\
+SHRED\textendash hybrid & 0.0281 & 0.0308 & \textbf{0.0532} & \textbf{0.0362} & 0.1215 \\
+SDN\textendash hybrid & 0.0590 & 0.0653 & 0.2782 & 0.0998 & 0.2938 \\
+SHRED\textendash burst & 0.0261 & 0.0261 & 0.3240 & 0.1281 & \textbf{0.0347} \\
+SDN\textendash burst & 0.0521 & 0.0583 & 0.4165 & 0.1684 & 0.1015 \\
+SHRED\textendash robust & 0.0485 & 0.0459 & 0.1813 & 0.0625 & 0.0777 \\
+QR\textendash POD & 0.2266 & 0.2263 & 0.3385 & 0.3650 & 0.2713 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Reconstruction error (5 sensors, QR placement). Bold = best in column.}
+\label{tab:robustness_5_QR}
+\begin{tabular}{lrrrrr}
+\toprule
+Model & Clean & Gaussian Noise & Sensor Dropout & Hybrid & Burst Noise \\
+\midrule
+SHRED\textendash clean & \textbf{0.0055} & \textbf{0.0058} & 0.1777 & 0.1357 & 0.0607 \\
+SDN\textendash clean & 0.0067 & 0.0341 & 0.2808 & 0.3157 & 0.2654 \\
+SHRED\textendash gaussian & 0.0081 & 0.0098 & 0.1898 & 0.1751 & 0.0908 \\
+SDN\textendash gaussian & 0.2084 & 0.2099 & 0.2975 & 0.3415 & 0.2838 \\
+SHRED\textendash dropout & 0.0259 & 0.0295 & \textbf{0.0315} & \textbf{0.0461} & 0.0872 \\
+SDN\textendash dropout & 0.0636 & 0.0766 & 0.0965 & 0.1536 & 0.1565 \\
+SHRED\textendash hybrid & 0.0408 & 0.0406 & 0.0766 & 0.0934 & 0.1019 \\
+SDN\textendash hybrid & 0.3201 & 0.3224 & 0.3509 & 0.3691 & 0.3562 \\
+SHRED\textendash burst & 0.0197 & 0.0201 & 0.1095 & 0.1367 & \textbf{0.0356} \\
+SDN\textendash burst & 0.0366 & 0.0511 & 0.0933 & 0.3107 & 0.0890 \\
+SHRED\textendash robust & 0.4812 & 0.4812 & 0.4813 & 0.4813 & 0.4812 \\
+QR\textendash POD & 0.1720 & 0.1719 & 0.4061 & 0.3122 & 0.2360 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Reconstruction error (8 sensors, QR placement). Bold = best in column.}
+\label{tab:robustness_8_QR}
+\begin{tabular}{lrrrrr}
+\toprule
+Model & Clean & Gaussian Noise & Sensor Dropout & Hybrid & Burst Noise \\
+\midrule
+SHRED\textendash clean & 0.0061 & \textbf{0.0081} & 0.2329 & 0.1035 & 0.0436 \\
+SDN\textendash clean & \textbf{0.0059} & 0.0321 & 0.3955 & 0.2416 & 0.1748 \\
+SHRED\textendash gaussian & 0.0093 & 0.0098 & 0.2756 & 0.1029 & 0.0477 \\
+SDN\textendash gaussian & 0.2344 & 0.2372 & 0.3897 & 0.2930 & 0.2792 \\
+SHRED\textendash dropout & 0.0738 & 0.0740 & 0.0938 & 0.0949 & 0.1594 \\
+SDN\textendash dropout & 0.0763 & 0.0812 & 0.1863 & 0.1370 & 0.1838 \\
+SHRED\textendash hybrid & 0.0355 & 0.0366 & \textbf{0.0704} & \textbf{0.0530} & 0.1257 \\
+SDN\textendash hybrid & 0.2793 & 0.2806 & 0.3774 & 0.3188 & 0.2916 \\
+SHRED\textendash burst & 0.0173 & 0.0178 & 0.1481 & 0.0591 & \textbf{0.0303} \\
+SDN\textendash burst & 0.0407 & 0.0481 & 0.1736 & 0.1164 & 0.0618 \\
+SHRED\textendash robust & 0.4892 & 0.4892 & 0.4892 & 0.4892 & 0.4892 \\
+QR\textendash POD & 0.0658 & 0.0655 & 0.3446 & 0.3156 & 0.2522 \\
+\bottomrule
+\end{tabular}
+\end{table}
