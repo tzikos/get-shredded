@@ -59,6 +59,9 @@ We also proposed a new method: RobustSHRED a method which aimed to produce a lat
 **Future Work:**
 A key finding from our test cases revealed that Dropout remains the hardest corruption scenario, pointing to a fundamental architectural constraint natively present in the models. The SHRED network learns fixed input-to-field mappings that cannot dynamically reconcile conflicting or completely missing dropout configurations at inference. Moving towards richer latent representations of the sensor state—as opposed to direct mapping pipelines—is a non-trivial but highly promising direction for future work.
 
+## Conclusion
+In conclusion we have shown that baseline SHRED works well for the fluid flow past a cylinder data, even for low number of sensors and random placement. And while in theory with noisy sensors it should be able to still produce good reconstructions, in practice even with data augmentation, it is not able to produce results as good as is achieved with clean data. Finally, an extended SHRED with a latent code was used to try and improve on vanilla SHRED. But the small training data did not allow us to achieve consistent results showing it to work. 
+
 ## Declaration of AI Usage
 Generative AI and Large Language Models (LLMs) were utilized over the course of this project to assist in the software development lifecycle. Specifically, AI tools provided support for writing boilerplate Python code, accelerating the debugging process, and formatting documentation. The foundational logic, experimental layout, and ultimate data analysis are our original work.
 
